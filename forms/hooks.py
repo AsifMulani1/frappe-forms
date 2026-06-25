@@ -259,3 +259,30 @@ require_type_annotated_api_methods = True
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+
+
+# Frappe Forms - headless SPA wiring
+# -----------------------------------
+# Serve the Vue SPA at /forms and any sub-path (builder, responses, public form).
+website_route_rules = [
+	{"from_route": "/forms/<path:app_path>", "to_route": "forms"},
+]
+
+# Inject window.csrf_token into the SPA's boot so logged-in POSTs aren't rejected 400.
+update_website_context = ["forms.api.inject_csrf_token"]
+
+# Show Forms on the /apps screen with its icon.
+add_to_apps_screen = [
+	{
+		"name": "forms",
+		"logo": "/assets/forms/frontend/favicon.svg",
+		"title": "Frappe Forms",
+		"route": "/forms",
+		"has_permission": "forms.admin.has_app_permission",
+	}
+]
+
+# Post-login landing for Forms Managers is the SPA, not Desk.
+role_home_page = {
+	"Forms Manager": "forms",
+}

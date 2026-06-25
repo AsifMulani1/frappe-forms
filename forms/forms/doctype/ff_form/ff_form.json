@@ -1,0 +1,222 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-23 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "title",
+  "slug",
+  "status",
+  "column_break_head",
+  "accent",
+  "cover_image",
+  "category",
+  "doctype_name",
+  "archived",
+  "is_template",
+  "description_section",
+  "description",
+  "thank_you_message",
+  "redirect_url",
+  "storage_section",
+  "storage_mode",
+  "target_doctype",
+  "views",
+  "options_section",
+  "login_required",
+  "allow_multiple",
+  "collect_email",
+  "fields_section",
+  "fields"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "description": "Unique URL slug. Auto-generated from title if blank.",
+   "fieldname": "slug",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Slug",
+   "unique": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Draft\nPublished"
+  },
+  {
+   "fieldname": "column_break_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "blue",
+   "fieldname": "accent",
+   "fieldtype": "Select",
+   "label": "Accent",
+   "options": "blue\ngreen\nviolet\nrose\namber\nteal"
+  },
+  {
+   "fieldname": "cover_image",
+   "fieldtype": "Attach Image",
+   "label": "Cover Image"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "\nHR\nSupport\nEvents\nFeedback\nOther"
+  },
+  {
+   "description": "Name of the generated DocType (Collection mode).",
+   "fieldname": "doctype_name",
+   "fieldtype": "Data",
+   "label": "Generated DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "description_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "default": "0",
+   "fieldname": "archived",
+   "fieldtype": "Check",
+   "label": "Archived"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_template",
+   "fieldtype": "Check",
+   "label": "Is Template"
+  },
+  {
+   "description": "Shown to respondents after they submit.",
+   "fieldname": "thank_you_message",
+   "fieldtype": "Small Text",
+   "label": "Thank-you message"
+  },
+  {
+   "description": "If set, respondents are redirected here after submitting (overrides the thank-you screen). Must start with http:// or https://",
+   "fieldname": "redirect_url",
+   "fieldtype": "Data",
+   "label": "Redirect URL after submit"
+  },
+  {
+   "fieldname": "storage_section",
+   "fieldtype": "Section Break",
+   "label": "Storage"
+  },
+  {
+   "default": "Collection",
+   "fieldname": "storage_mode",
+   "fieldtype": "Select",
+   "label": "Storage Mode",
+   "options": "Collection\nLinked"
+  },
+  {
+   "depends_on": "eval:doc.storage_mode=='Linked'",
+   "fieldname": "target_doctype",
+   "fieldtype": "Link",
+   "label": "Target DocType",
+   "options": "DocType"
+  },
+  {
+   "default": "0",
+   "description": "Number of times the public form was opened (for the completion funnel).",
+   "fieldname": "views",
+   "fieldtype": "Int",
+   "label": "Views",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "options_section",
+   "fieldtype": "Section Break",
+   "label": "Options"
+  },
+  {
+   "default": "0",
+   "fieldname": "login_required",
+   "fieldtype": "Check",
+   "label": "Login Required"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_multiple",
+   "fieldtype": "Check",
+   "label": "Allow Multiple Submissions"
+  },
+  {
+   "default": "1",
+   "fieldname": "collect_email",
+   "fieldtype": "Check",
+   "label": "Collect Email Addresses"
+  },
+  {
+   "fieldname": "fields_section",
+   "fieldtype": "Section Break",
+   "label": "Fields"
+  },
+  {
+   "fieldname": "fields",
+   "fieldtype": "Table",
+   "label": "Fields",
+   "options": "FF Form Field"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-23 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Forms",
+ "name": "FF Form",
+ "naming_rule": "Random",
+ "autoname": "hash",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Forms Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,491 @@
+@import 'frappe-ui/style.css';
+
+/* ---------------------------------------------------------------------------
+   Frappe Forms - app layer on top of the frappe-ui (Espresso) design system.
+   Frappe's interactive hue is blue; we expose it as an --accent token so it can
+   be re-pointed per form (blue / green / violet). In-app primary buttons stay
+   near-black (solid gray) per Frappe convention; the accent drives selection,
+   focus, links, and the public form.
+--------------------------------------------------------------------------- */
+:root {
+  --accent: var(--blue-500);
+  --accent-hover: var(--blue-600);
+  --accent-ink: var(--blue-600);
+  --accent-surface: var(--blue-50);
+  --accent-surface-2: var(--blue-100);
+  --accent-outline: var(--blue-300);
+}
+[data-accent='green'] {
+  --accent: var(--green-600);
+  --accent-hover: var(--green-700);
+  --accent-ink: var(--green-700);
+  --accent-surface: var(--green-50);
+  --accent-surface-2: var(--green-100);
+  --accent-outline: var(--green-300);
+}
+[data-accent='violet'] {
+  --accent: var(--violet-500);
+  --accent-hover: var(--violet-600);
+  --accent-ink: var(--violet-600);
+  --accent-surface: var(--violet-50);
+  --accent-surface-2: var(--violet-100);
+  --accent-outline: var(--violet-300);
+}
+/* Extra presets built from frappe-ui base color tokens (rose -> frappe red). */
+[data-accent='rose'] {
+  --accent: var(--red-500);
+  --accent-hover: var(--red-600);
+  --accent-ink: var(--red-600);
+  --accent-surface: var(--red-50);
+  --accent-surface-2: var(--red-100);
+  --accent-outline: var(--red-300);
+}
+[data-accent='amber'] {
+  --accent: var(--amber-600);
+  --accent-hover: var(--amber-700);
+  --accent-ink: var(--amber-700);
+  --accent-surface: var(--amber-50);
+  --accent-surface-2: var(--amber-100);
+  --accent-outline: var(--amber-300);
+}
+[data-accent='teal'] {
+  --accent: var(--teal-600);
+  --accent-hover: var(--teal-700);
+  --accent-ink: var(--teal-700);
+  --accent-surface: var(--teal-50);
+  --accent-surface-2: var(--teal-100);
+  --accent-outline: var(--teal-300);
+}
+
+/* Accent SURFACE tints reference light base shades (--blue-50…), which frappe-ui does not flip
+   for dark mode. In dark, derive them from the accent + the page surface so they stay subtle. */
+[data-theme='dark'],
+[data-theme='dark'] [data-accent] {
+  --accent-surface: color-mix(in srgb, var(--accent) 22%, transparent);
+  --accent-surface-2: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--surface-gray-1, #f4f5f6);
+  font-family: 'InterVar', 'Inter', sans-serif;
+  color: var(--ink-gray-9);
+}
+#app {
+  height: 100%;
+}
+
+.ink-accent {
+  color: var(--accent-ink);
+}
+.bg-accent {
+  background: var(--accent);
+}
+.bg-accent-surface {
+  background: var(--accent-surface);
+}
+
+/* font-mono helper used for fieldnames / record ids */
+.font-mono {
+  font-family: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---- segmented control ---- */
+.segmented {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-gray-2);
+  border-radius: 8px;
+  padding: 2px;
+}
+.segmented .seg-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-gray-6);
+  cursor: pointer;
+  transition: all 0.1s;
+  white-space: nowrap;
+  user-select: none;
+}
+.segmented .seg-btn.active {
+  background: var(--surface-white);
+  color: var(--ink-gray-9);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---- sidebar nav ---- */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-gray-7);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav-item:hover {
+  background: var(--surface-gray-2);
+}
+.nav-item.active {
+  background: var(--surface-gray-3);
+  color: var(--ink-gray-9);
+  font-weight: 500;
+}
+
+
+/* ---- app launcher ---- */
+.app-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.app-tile:hover {
+  background: var(--surface-gray-2);
+}
+.app-tile .glyph {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+/* ---- field palette (builder) ---- */
+.palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+  border: 1px solid transparent;
+}
+.palette-item:hover {
+  background: var(--surface-gray-2);
+}
+.palette-item .pi-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--surface-gray-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-gray-7);
+  flex: none;
+}
+
+/* ---- question card (builder canvas) ---- */
+.q-card {
+  background: var(--surface-white);
+  border: 1px solid var(--outline-gray-1);
+  border-radius: 10px;
+  padding: 18px 20px;
+  transition: border-color 0.12s, box-shadow 0.16s, transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+  position: relative;
+  cursor: pointer;
+}
+.q-card:hover {
+  border-color: var(--outline-gray-2);
+}
+/* the grabbed card: lifts and follows the pointer with no transform lag */
+.q-card.dragging {
+  transition: box-shadow 0.16s, border-color 0.12s;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
+  border-color: var(--outline-gray-2);
+  z-index: 30;
+  cursor: grabbing;
+}
+
+/* hover-reveal insert point between cards (on-demand "+" replaces the standing palette) */
+.insert-gap {
+  height: 16px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.insert-gap::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: var(--outline-gray-2);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.insert-gap:hover::before {
+  opacity: 1;
+}
+.insert-btn {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--outline-gray-2);
+  background: var(--surface-white);
+  color: var(--ink-gray-6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+}
+.insert-gap:hover .insert-btn,
+.insert-btn.is-open {
+  opacity: 1;
+}
+.insert-btn:hover {
+  background: var(--ink-gray-9);
+  color: var(--surface-white);
+  border-color: var(--ink-gray-9);
+}
+.q-card.selected {
+  border-color: var(--ink-gray-9);
+  box-shadow: 0 0 0 1px var(--ink-gray-9);
+}
+.q-card .drag-handle:active {
+  cursor: grabbing;
+}
+.q-num {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-gray-4);
+}
+
+/* inline editable text */
+.edit-line {
+  border: none;
+  background: transparent;
+  width: 100%;
+  color: var(--ink-gray-9);
+  padding: 2px 0;
+  outline: none;
+  font-family: inherit;
+}
+.edit-line::placeholder {
+  color: var(--ink-gray-4);
+}
+.edit-line:focus {
+  box-shadow: 0 1px 0 0 var(--ink-gray-9);
+}
+
+/* preview controls inside a card (non-interactive) */
+.prev-input {
+  height: 32px;
+  border: 1px solid var(--outline-gray-2);
+  border-radius: 8px;
+  background: var(--surface-gray-1);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--ink-gray-4);
+  font-size: 13px;
+}
+.prev-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--outline-gray-3);
+  flex: none;
+}
+.prev-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1.5px solid var(--outline-gray-3);
+  flex: none;
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+/* ---- developer panel (code surface) ---- */
+.dev-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 460px;
+  background: var(--surface-white);
+  border-left: 1px solid var(--outline-gray-2);
+  box-shadow: var(--shadow-xl);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
+.code-surface {
+  background: #0f0f0f;
+  border-radius: 10px;
+  overflow: auto;
+}
+.code-surface pre {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #e2e2e2;
+  white-space: pre;
+}
+.tok-key {
+  color: #73bbf6;
+}
+.tok-str {
+  color: #86e0a8;
+}
+.tok-num {
+  color: #fbcc55;
+}
+.tok-bool {
+  color: #cfa1f2;
+}
+
+/* Share dialog: white people-picker input (frappe-ui Autocomplete defaults to a grey fill) */
+.ac-white button {
+  background: var(--surface-white);
+  border-color: var(--outline-gray-2);
+}
+.ac-white button:hover {
+  background: var(--surface-white);
+}
+
+/* ---- respondent (public) view ---- */
+/* Align frappe-ui TimePicker/DatePicker triggers (default md) with the lg FormControls.
+   The dropdown panels are teleported, so this only touches the in-tree trigger input. */
+.r-picker input {
+  height: 40px;
+  border-radius: 8px;
+  font-size: 16px;
+}
+.public-card {
+  background: var(--surface-white);
+  border: 1px solid var(--outline-gray-1);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.r-input {
+  width: 100%;
+  height: 38px;
+  border: 1px solid var(--outline-gray-2);
+  border-radius: 8px;
+  background: var(--surface-white);
+  padding: 0 11px;
+  font-size: 14px;
+  color: var(--ink-gray-9);
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.r-input:focus {
+  outline: none;
+  border-color: var(--accent-outline);
+  box-shadow: 0 0 0 3px var(--accent-surface);
+}
+textarea.r-input {
+  height: auto;
+  padding: 10px 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.r-choice {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid var(--outline-gray-2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.r-choice:hover {
+  border-color: var(--outline-gray-3);
+}
+.r-choice.sel {
+  border-color: var(--accent);
+  background: var(--accent-surface);
+}
+.r-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--outline-gray-3);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.r-choice.sel .r-radio {
+  border-color: var(--accent);
+}
+.r-cb {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--outline-gray-3);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.r-choice.sel .r-cb {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.star {
+  cursor: pointer;
+  color: var(--outline-gray-3);
+  transition: color 0.1s;
+}
+.star.on {
+  color: var(--amber-500, #f59e0b);
+}
+
+/* ---- responses ---- */
+.stat-card {
+  border: 1px solid var(--outline-gray-1);
+  border-radius: 10px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--surface-white);
+}
+.bar-track {
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--surface-gray-2);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

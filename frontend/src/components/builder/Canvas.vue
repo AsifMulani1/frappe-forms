@@ -1,0 +1,234 @@
+<script setup>
+import { Button, Dropdown, Switch } from 'frappe-ui'
+import Icon from '../Icon.vue'
+import FieldTypePicker from './FieldTypePicker.vue'
+import { FT, FIELD_TYPES, isLayout } from '../../fieldTypes'
+import { prefs } from '../../data/prefs'
+
+import { ref } from 'vue'
+
+const props = defineProps({
+  form: Object,
+  selectedId: String,
+})
+const emit = defineEmits([
+  'select', 'update-meta', 'update-field', 'delete', 'duplicate', 'move', 'reorder', 'add',
+])
+
+// Inline type picker for the selected card (direct manipulation; replaces the dev inspector
+// in the minimal experience). Current type is check-marked.
+function typeOptions(field) {
+  return FIELD_TYPES.map((t) => ({
+    label: t.label,
+    icon: t.id === field.field_type ? 'check' : '',
+    onClick: () => emit('update-field', field.name, { field_type: t.id }),
+  }))
+}
+
+// Pointer-based reorder. The grabbed card follows the pointer via transform; neighbours slide
+// out of the way (CSS-transitioned) to reveal the drop slot. Drop thresholds use the cards'
+// original centers, so variable card heights are handled correctly.
+const canvasEl = ref(null)
+const drag = ref(null)
+
+function startDrag(e, i) {
+  if (e.button) return
+  e.preventDefault()
+  const cards = [...canvasEl.value.querySelectorAll('.q-card')]
+  const rows = cards.map((el) => {
+    const r = el.getBoundingClientRect()
+    return { center: r.top + r.height / 2 }
+  })
+  drag.value = { from: i, to: i, startY: e.clientY, dy: 0, rows, slot: cards[i].getBoundingClientRect().height + 16 }
+  window.addEventListener('pointermove', onDragMove)
+  window.addEventListener('pointerup', endDrag, { once: true })
+  document.body.style.userSelect = 'none'
+}
+function onDragMove(e) {
+  const d = drag.value
+  if (!d) return
+  d.dy = e.clientY - d.startY
+  let to = d.from
+  for (let j = d.from + 1; j < d.rows.length; j++) if (e.clientY > d.rows[j].center) to = j
+  for (let j = d.from - 1; j >= 0; j--) if (e.clientY < d.rows[j].center) to = j
+  d.to = to
+}
+function endDrag() {
+  const d = drag.value
+  window.removeEventListener('pointermove', onDragMove)
+  document.body.style.userSelect = ''
+  if (d && d.to !== d.from) emit('reorder', d.from, d.to)
+  drag.value = null
+}
+function cardStyle(i) {
+  const d = drag.value
+  if (!d) return null
+  if (i === d.from) return { transform: `translateY(${d.dy}px) scale(1.01)` }
+  let shift = 0
+  if (d.from < d.to && i > d.from && i <= d.to) shift = -d.slot
+  else if (d.from > d.to && i >= d.to && i < d.from) shift = d.slot
+  return { transform: `translateY(${shift}px)` }
+}
+
+function optionsArray(field) {
+  return (field.options || '').split('\n').filter((o) => o.length || o === '')
+}
+function setOption(field, i, val) {
+  const arr = (field.options || '').split('\n')
+  arr[i] = val
+  emit('update-field', field.name, { options: arr.join('\n') })
+}
+function addOption(field) {
+  const arr = (field.options || '').split('\n').filter((x) => x.length)
+  arr.push(`Option ${arr.length + 1}`)
+  emit('update-field', field.name, { options: arr.join('\n') })
+}
+function removeOption(field, i) {
+  const arr = (field.options || '').split('\n').filter((x) => x.length)
+  arr.splice(i, 1)
+  emit('update-field', field.name, { options: arr.join('\n') })
+}
+</script>
+
+<template>
+  <div class="flex-1 overflow-auto bg-surface-white">
+    <div ref="canvasEl" class="max-w-[720px] mx-auto px-6 pt-7 pb-20">
+      <!-- form header card -->
+      <div class="public-card overflow-hidden mb-4 cursor-pointer"
+           :class="{ 'ring-1 ring-ink-gray-9': selectedId === null }"
+           @click="emit('select', null)">
+        <img v-if="form.cover_image" :src="form.cover_image" alt="Cover" class="w-full h-[160px] object-cover" />
+        <div class="px-6 py-5">
+          <input class="edit-line text-[22px] font-medium text-ink-gray-9" :value="form.title"
+                 placeholder="Form title" @click.stop
+                 @input="emit('update-meta', { title: $event.target.value })" />
+          <textarea class="edit-line text-sm text-ink-gray-6 mt-1.5 resize-none leading-relaxed" rows="2"
+                    :value="form.description" placeholder="Form description" @click.stop
+                    @input="emit('update-meta', { description: $event.target.value })" />
+        </div>
+      </div>
+
+      <!-- question cards, each preceded by a hover-reveal insert point -->
+      <template v-for="(f, i) in form.fields" :key="f.name">
+        <div class="insert-gap">
+          <FieldTypePicker @pick="emit('add', $event, i)">
+            <template #trigger="{ toggle, isOpen }">
+              <button type="button" class="insert-btn" :class="{ 'is-open': isOpen }" title="Insert field here" @click.stop="toggle">
+                <Icon name="plus" :size="14" />
+              </button>
+            </template>
+          </FieldTypePicker>
+        </div>
+        <div class="q-card group" :class="{ selected: selectedId === f.name, dragging: drag && drag.from === i }"
+             :style="cardStyle(i)"
+             @click="emit('select', f.name)">
+        <div class="relative flex items-center gap-1">
+          <!-- drag handle: hover-reveal, centered on the label line, tucked in the left gutter -->
+          <span class="drag-handle absolute -left-5 top-1/2 -translate-y-1/2 text-ink-gray-3 hover:text-ink-gray-6 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+                title="Drag to reorder" @click.stop @pointerdown="startDrag($event, i)">
+            <Icon name="grip-vertical" :size="15" />
+          </span>
+          <input class="edit-line min-w-0 max-w-full" style="field-sizing:content;width:auto"
+                 :class="isLayout(f.field_type) ? 'text-[18px] font-semibold text-ink-gray-9' : 'text-[16px] text-ink-gray-9'"
+                 :value="f.label" :placeholder="isLayout(f.field_type) ? 'Section title' : 'Question label'"
+                 @click.stop @input="emit('update-field', f.name, { label: $event.target.value })" />
+          <span v-if="f.reqd && !isLayout(f.field_type)" class="text-base text-ink-red-500 shrink-0 -ml-0.5" title="Required">*</span>
+          <!-- actions on the same row as the label, so selecting never grows the card -->
+          <div v-if="selectedId === f.name" class="flex items-center gap-0.5 shrink-0 ml-auto pl-2" @click.stop>
+            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-gray-6 disabled:opacity-30" :disabled="i === 0" title="Move up" @click="emit('move', f.name, -1)"><Icon name="chevron-up" :size="15" /></button>
+            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-gray-6 disabled:opacity-30" :disabled="i === form.fields.length - 1" title="Move down" @click="emit('move', f.name, 1)"><Icon name="chevron-down" :size="15" /></button>
+            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-gray-6" title="Duplicate" @click="emit('duplicate', f.name)"><Icon name="copy" :size="14" /></button>
+            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-red-500" title="Delete" @click="emit('delete', f.name)"><Icon name="trash-2" :size="14" /></button>
+          </div>
+        </div>
+        <input v-if="f.help_text || selectedId === f.name" class="edit-line text-[13px] text-ink-gray-5 mb-1"
+               :value="f.help_text" :placeholder="isLayout(f.field_type) ? 'Add a subtitle (optional)' : 'Add a description (optional)'"
+               @click.stop @input="emit('update-field', f.name, { help_text: $event.target.value })" />
+
+        <!-- preview controls (none for display-only blocks like section headers) -->
+        <div v-if="!isLayout(f.field_type)" class="mt-2.5">
+          <div v-if="['short_answer', 'email', 'number', 'phone'].includes(f.field_type)" class="prev-input max-w-[340px] gap-2">
+            <Icon v-if="f.field_type === 'phone'" name="phone" :size="14" class="text-ink-gray-4" />
+            <span>{{ f.field_type === 'email' ? 'name@example.com' : f.field_type === 'number' ? '0' : f.field_type === 'phone' ? '+1 (555) 000-0000' : 'Short answer text' }}</span>
+          </div>
+          <div v-else-if="['paragraph', 'address'].includes(f.field_type)" class="prev-input items-start pt-2.5" style="height:60px">{{ f.field_type === 'address' ? 'Street, city, state, ZIP' : 'Long answer text' }}</div>
+          <div v-else-if="f.field_type === 'time'" class="prev-input max-w-[160px] gap-2">
+            <Icon name="clock" :size="14" class="text-ink-gray-4" /><span>--:--</span>
+          </div>
+          <div v-else-if="f.field_type === 'file_upload'" class="prev-input justify-center border-dashed gap-2 max-w-[340px] text-ink-gray-5">
+            <Icon name="paperclip" :size="14" class="text-ink-gray-4" /><span>Click to upload a file</span>
+          </div>
+          <div v-else-if="f.field_type === 'signature'" class="border border-dashed border-outline-gray-2 rounded-md bg-surface-gray-1 flex items-center justify-center text-ink-gray-4 gap-2 max-w-[340px]" style="height:90px">
+            <Icon name="pen-line" :size="16" /><span class="text-sm">Sign here</span>
+          </div>
+          <div v-else-if="f.field_type === 'dropdown'" class="prev-input max-w-[340px] justify-between">
+            <span>Choose an option</span><Icon name="chevron-down" :size="15" class="text-ink-gray-4" />
+          </div>
+          <div v-else-if="f.field_type === 'date'" class="prev-input max-w-[220px] gap-2">
+            <Icon name="calendar" :size="14" class="text-ink-gray-4" /><span>dd / mm / yyyy</span>
+          </div>
+          <div v-else-if="f.field_type === 'rating'" class="flex gap-1">
+            <Icon v-for="s in 5" :key="s" name="star" :size="22" class="text-ink-gray-3" />
+          </div>
+          <div v-else-if="f.field_type === 'yes_no'" class="flex items-center gap-2">
+            <span class="prev-radio" /><span class="text-sm text-ink-gray-5">Yes</span>
+          </div>
+          <div v-else-if="['single_choice', 'checkboxes'].includes(f.field_type)" class="flex flex-col gap-2.5">
+            <div v-for="(opt, oi) in optionsArray(f)" :key="oi" class="opt-row">
+              <span :class="f.field_type === 'single_choice' ? 'prev-radio' : 'prev-check'" />
+              <input v-if="selectedId === f.name" class="edit-line text-[13px]" :value="opt" :placeholder="`Option ${oi + 1}`"
+                     @click.stop @input="setOption(f, oi, $event.target.value)" />
+              <span v-else class="text-sm text-ink-gray-7">{{ opt }}</span>
+              <button v-if="selectedId === f.name && optionsArray(f).length > 1" class="p-0.5 rounded hover:bg-surface-gray-2 text-ink-gray-4"
+                      title="Remove option" @click.stop="removeOption(f, oi)"><Icon name="x" :size="13" /></button>
+            </div>
+            <div v-if="selectedId === f.name" class="opt-row cursor-pointer" @click.stop="addOption(f)">
+              <span :class="f.field_type === 'single_choice' ? 'prev-radio' : 'prev-check'" style="opacity:.4" />
+              <span class="text-sm text-ink-gray-6">Add option</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- inline field controls (minimal mode): change type + required, on the selected card -->
+        <div v-if="!prefs.devMode && selectedId === f.name"
+             class="flex items-center gap-3 mt-4 pt-3 border-t border-outline-gray-1" @click.stop>
+          <Dropdown :options="typeOptions(f)">
+            <button class="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-outline-gray-2 text-sm text-ink-gray-7 hover:bg-surface-gray-2 transition-colors">
+              <Icon :name="FT[f.field_type].icon" :size="14" />{{ FT[f.field_type].label }}
+              <Icon name="chevron-down" :size="13" class="text-ink-gray-4" />
+            </button>
+          </Dropdown>
+          <div v-if="!isLayout(f.field_type)" class="ml-auto flex items-center gap-2">
+            <span class="text-sm text-ink-gray-7">Required</span>
+            <Switch :modelValue="!!f.reqd" @update:modelValue="emit('update-field', f.name, { reqd: $event ? 1 : 0 })" />
+          </div>
+        </div>
+        </div>
+      </template>
+
+      <!-- empty state -->
+      <div v-if="!form.fields.length" class="flex flex-col items-center justify-center text-center border border-dashed border-outline-gray-2 rounded-[10px] bg-surface-white py-12">
+        <Icon name="plus-circle" :size="26" class="text-ink-gray-4" />
+        <span class="text-base text-ink-gray-7 mt-3">No fields yet</span>
+        <span class="text-sm text-ink-gray-5 mt-1">Add your first field to get started.</span>
+        <FieldTypePicker class="mt-4" @pick="emit('add', $event, 0)">
+          <template #trigger="{ toggle }">
+            <Button variant="solid" theme="gray" @click="toggle">
+              <template #prefix><Icon name="plus" :size="15" /></template>Add field
+            </Button>
+          </template>
+        </FieldTypePicker>
+      </div>
+
+      <div v-else class="flex justify-center mt-4">
+        <FieldTypePicker placement="top" @pick="emit('add', $event)">
+          <template #trigger="{ toggle }">
+            <Button variant="outline" theme="gray" @click="toggle">
+              <template #prefix><Icon name="plus" :size="15" /></template>Add field
+            </Button>
+          </template>
+        </FieldTypePicker>
+      </div>
+    </div>
+  </div>
+</template>
