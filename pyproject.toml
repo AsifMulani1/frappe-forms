@@ -4,7 +4,7 @@ authors = [
     { name = "Acme", email = "mulani.asif12@gmail.com"}
 ]
 description = "Google-Forms-style form builder that compiles to real Frappe DocTypes"
-requires-python = ">=3.14"
+requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
@@ -25,7 +25,7 @@ packages = []
 
 [tool.ruff]
 line-length = 110
-target-version = "py314"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = [

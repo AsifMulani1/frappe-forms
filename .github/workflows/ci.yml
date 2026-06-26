@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mariadb:10.6
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=10
+
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+        with:
+          path: apps/forms
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server libmysqlclient-dev
+          pip install frappe-bench
+
+      - name: Init bench
+        run: |
+          bench init --skip-redis-config-generation --frappe-branch version-15 frappe-bench
+          # Bring in the checked-out app source.
+          rm -rf frappe-bench/apps/forms
+          mv apps/forms frappe-bench/apps/forms
+          cd frappe-bench
+          bench setup requirements --dev || true
+
+      - name: Configure & create site
+        working-directory: frappe-bench
+        run: |
+          bench set-config -g db_host 127.0.0.1
+          bench set-config -g redis_cache redis://127.0.0.1:6379
+          bench set-config -g redis_queue redis://127.0.0.1:6379
+          bench set-config -g redis_socketio redis://127.0.0.1:6379
+          bench new-site test_site \
+            --mariadb-root-password root \
+            --admin-password admin \
+            --db-root-username root \
+            --no-setup-db || \
+          bench new-site test_site \
+            --mariadb-root-password root \
+            --admin-password admin
+
+      - name: Install app & run tests
+        working-directory: frappe-bench
+        run: |
+          bench --site test_site install-app forms
+          bench --site test_site set-config allow_tests true
+          bench --site test_site run-tests --app forms
+
+  frontend:
+    name: Frontend lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install & build
+        working-directory: frontend
+        run: |
+          yarn install --frozen-lockfile || yarn install
+          yarn build
+
+      - name: Verify committed SPA bundle is in sync
+        run: |
+          # The built SPA is committed (bench build does not run Vite in production).
+          # A drift here means someone changed the frontend without rebuilding.
+          if ! git diff --quiet -- forms/public/frontend forms/www/forms.html; then
+            echo "::error::Built SPA assets are stale. Run 'cd frontend && yarn build' and commit the result."
+            git --no-pager diff --stat -- forms/public/frontend forms/www/forms.html
+            exit 1
+          fi
+
+  lint:
+    name: Python lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1
