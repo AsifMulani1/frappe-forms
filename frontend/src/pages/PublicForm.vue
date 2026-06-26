@@ -380,10 +380,10 @@ async function submit() {
 
 <template>
   <div class="min-h-full overflow-auto bg-surface-gray-1" :data-accent="form?.accent || 'blue'">
-    <!-- builder preview banner: read-only, no submission -->
-    <div v-if="isPreview" class="sticky top-0 z-20 h-9 flex items-center justify-center gap-2 bg-surface-gray-7 text-ink-white text-[13px] font-medium px-4">
+    <!-- builder preview: minimal floating indicator, read-only, no submission -->
+    <div v-if="isPreview" title="Preview — responses aren’t saved"
+         class="fixed bottom-5 right-5 z-30 flex items-center justify-center h-8 w-8 rounded-full bg-surface-white text-ink-gray-5 border border-outline-gray-2 shadow-sm">
       <Icon name="eye" :size="14" />
-      <span>Preview — this is how respondents see your form. Responses aren’t saved.</span>
     </div>
 
     <div v-if="notFound" class="flex flex-col items-center justify-center h-screen text-center px-6">
@@ -394,7 +394,7 @@ async function submit() {
 
     <template v-else-if="form">
       <!-- progress -->
-      <div v-if="form.show_progress !== 0" class="h-[3px] bg-surface-gray-2 sticky z-10" :class="isPreview ? 'top-9' : 'top-0'">
+      <div v-if="form.show_progress !== 0" class="h-[3px] bg-surface-gray-2 sticky top-0 z-10">
         <div class="h-full transition-all" :style="{ width: `${done ? 100 : pct}%`, background: 'var(--accent)' }" />
       </div>
 
