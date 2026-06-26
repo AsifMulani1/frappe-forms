@@ -16,10 +16,39 @@ from forms.compile import resolve_fieldname, title_case
 
 FIELD_FIELDS = ["name", "label", "fieldname", "field_type", "reqd", "help_text", "options", "mapped_field"]
 
+# Largest page a client may request from list_submissions, and the synchronous CSV export ceiling.
+MAX_PAGE_SIZE = 200
+EXPORT_ROW_CAP = 50_000
+
 
 def _guard():
+	"""Every builder endpoint requires a logged-in Forms Manager (or System Manager).
+	The SPA router check is client-side only — this is the real gate."""
 	if frappe.session.user == "Guest":
 		frappe.throw("Not permitted.", frappe.PermissionError)
+	if not (set(frappe.get_roles()) & {"Forms Manager", "System Manager"}):
+		frappe.throw("Not permitted.", frappe.PermissionError)
+
+
+def _require(form_name: str, ptype: str = "read"):
+	"""Per-record authorization for the custom builder endpoints. These read/write via
+	frappe.get_all / frappe.db.* (which bypass the DocType permission layer), so we enforce
+	access explicitly via the same hook that guards Desk/REST (forms.permissions)."""
+	if not form_name or not frappe.has_permission("FF Form", ptype, doc=form_name):
+		frappe.local.response["http_status_code"] = 403
+		frappe.throw("You don't have access to this form.", frappe.PermissionError)
+
+
+def _accessible_filter(filters: dict) -> dict:
+	"""Restrict a FF Form list query to forms the current user may see (owner + shared +
+	templates). System Managers are unrestricted. Mutates and returns `filters`."""
+	if "System Manager" in frappe.get_roles():
+		return filters
+	own = set(frappe.get_all("FF Form", filters={"owner": frappe.session.user}, pluck="name"))
+	tmpl = set(frappe.get_all("FF Form", filters={"is_template": 1}, pluck="name"))
+	accessible = own | _shared_names() | tmpl
+	filters["name"] = ("in", list(accessible) or [""])
+	return filters
 
 
 def _response_count(form) -> int:
@@ -60,6 +89,9 @@ def list_forms(view: str = "all") -> list[dict]:
 			return []
 		filters = {"name": ("in", list(names)), "archived": 0}
 
+	if view != "shared":
+		_accessible_filter(filters)
+
 	out = []
 	for f in frappe.get_all(
 		"FF Form",
@@ -91,9 +123,9 @@ def nav_counts() -> dict:
 	"""Live counts for the sidebar nav badges."""
 	_guard()
 	return {
-		"all": frappe.db.count("FF Form", {"archived": 0}),
+		"all": frappe.db.count("FF Form", _accessible_filter({"archived": 0})),
 		"templates": frappe.db.count("FF Form", {"is_template": 1}),
-		"archived": frappe.db.count("FF Form", {"archived": 1}),
+		"archived": frappe.db.count("FF Form", _accessible_filter({"archived": 1})),
 		"shared": len(_shared_names()),
 	}
 
@@ -174,6 +206,7 @@ def get_form(slug: str) -> dict:
 	if not name:
 		frappe.local.response["http_status_code"] = 404
 		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	_require(name, "read")
 	return _form_dict(frappe.get_doc("FF Form", name))
 
 
@@ -192,7 +225,12 @@ def create_form() -> dict:
 def save_form(name: str, data: str) -> dict:
 	"""Persist builder edits. Frozen fieldnames are never overwritten by the client."""
 	_guard()
+	_require(name, "write")
 	payload = frappe.parse_json(data)
+	# Reject a redirect target that isn't an http(s) URL or a site-relative path (open-redirect guard).
+	redirect = (payload.get("redirect_url") or "").strip()
+	if redirect and not re.match(r"^(https?://|/)", redirect):
+		frappe.throw("Redirect URL must start with http://, https://, or /.")
 	doc = frappe.get_doc("FF Form", name)
 
 	for key in ("title", "description", "accent", "cover_image", "category", "storage_mode",
@@ -239,6 +277,7 @@ def save_form(name: str, data: str) -> dict:
 @frappe.whitelist()
 def set_archived(name: str, archived: int = 1) -> dict:
 	_guard()
+	_require(name, "write")
 	frappe.db.set_value("FF Form", name, "archived", cint(archived))
 	frappe.db.commit()
 	return {"name": name, "archived": cint(archived)}
@@ -249,6 +288,7 @@ def delete_form(name: str) -> dict:
 	"""Permanently delete a form. For a Collection form this also drops its generated DocType,
 	every submitted record, and any child link tables. Linked forms leave their target untouched."""
 	_guard()
+	_require(name, "delete")
 	form = frappe.get_doc("FF Form", name)
 	dt = form.doctype_name
 	frappe.delete_doc("FF Form", name, force=True, ignore_permissions=True)
@@ -284,6 +324,7 @@ def set_archived_bulk(names: str, archived: int = 1) -> dict:
 	_guard()
 	names = frappe.parse_json(names) if isinstance(names, str) else names
 	for n in names:
+		_require(n, "write")
 		frappe.db.set_value("FF Form", n, "archived", cint(archived))
 	frappe.db.commit()
 	return {"updated": len(names), "archived": cint(archived)}
@@ -293,6 +334,7 @@ def set_archived_bulk(names: str, archived: int = 1) -> dict:
 def duplicate_form(name: str) -> dict:
 	"""Copy a form (used by 'Use template' and plain duplicate). Always a fresh Draft."""
 	_guard()
+	_require(name, "read")
 	src = frappe.get_doc("FF Form", name)
 	doc = frappe.new_doc("FF Form")
 	doc.title = f"{src.title} (copy)"
@@ -333,6 +375,7 @@ def list_users() -> list[dict]:
 def share_form(name: str, user: str, write: int = 0) -> dict:
 	"""Share a form with another user via Frappe DocShare (shows in their 'Shared with me')."""
 	_guard()
+	_require(name, "share")
 	frappe.share.add("FF Form", name, user, read=1, write=cint(write), share=0)
 	frappe.db.commit()
 	return {"name": name, "shared_with": user}
@@ -342,6 +385,7 @@ def share_form(name: str, user: str, write: int = 0) -> dict:
 def list_shares(name: str) -> list[dict]:
 	"""People who currently have access to a form (drives the share dialog's access list)."""
 	_guard()
+	_require(name, "share")
 	shares = frappe.get_all(
 		"DocShare",
 		filters={"share_doctype": "FF Form", "share_name": name},
@@ -363,6 +407,7 @@ def list_shares(name: str) -> list[dict]:
 def unshare_form(name: str, user: str) -> dict:
 	"""Revoke a user's access to a form."""
 	_guard()
+	_require(name, "share")
 	frappe.share.remove("FF Form", name, user)
 	frappe.db.commit()
 	return {"name": name, "unshared": user}
@@ -371,6 +416,7 @@ def unshare_form(name: str, user: str) -> dict:
 @frappe.whitelist()
 def publish_form(name: str) -> dict:
 	_guard()
+	_require(name, "write")
 	result = _publish(name)
 	return result
 
@@ -381,6 +427,7 @@ def preview(slug: str) -> dict:
 	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
 	if not name:
 		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	_require(name, "read")
 	return _compile_preview(name)
 
 
@@ -394,6 +441,7 @@ def preview_form(slug: str) -> dict:
 	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
 	if not name:
 		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	_require(name, "read")
 	return public_render_spec(frappe.get_doc("FF Form", name))
 
 
@@ -423,8 +471,13 @@ def _safe_ident(name: str) -> str:
 	return name
 
 
-def _published_collection(slug: str):
-	form = frappe.get_doc("FF Form", frappe.db.get_value("FF Form", {"slug": slug}, "name"))
+def _published_collection(slug: str, ptype: str = "read"):
+	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
+	if not name:
+		frappe.local.response["http_status_code"] = 404
+		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	_require(name, ptype)
+	form = frappe.get_doc("FF Form", name)
 	if form.storage_mode != "Collection" or not form.doctype_name:
 		frappe.throw("Responses are only available for collection forms.")
 	return form
@@ -534,7 +587,7 @@ def list_submissions(slug: str, limit: int = 50, start: int = 0) -> dict:
 	if meta.get_field("workflow_state"):
 		fields.append("workflow_state")
 
-	rows = frappe.get_all(dt, fields=fields, limit=cint(limit), start=cint(start),
+	rows = frappe.get_all(dt, fields=fields, limit=min(cint(limit) or 50, MAX_PAGE_SIZE), start=cint(start),
 		order_by="creation desc")
 	return {
 		"doctype": dt,
@@ -581,7 +634,10 @@ def get_submission(slug: str, name: str) -> dict:
 @frappe.whitelist()
 def set_workflow_state(slug: str, name: str, state: str) -> dict:
 	_guard()
-	form = _published_collection(slug)
+	from forms.api import WORKFLOW_STATES
+	if state not in WORKFLOW_STATES:
+		frappe.throw("Invalid workflow state.")
+	form = _published_collection(slug, "write")
 	frappe.db.set_value(form.doctype_name, name, "workflow_state", state)
 	frappe.db.commit()
 	return {"name": name, "workflow_state": state}
@@ -602,8 +658,14 @@ def export_csv(slug: str) -> str:
 	if frappe.get_meta(dt).get_field("respondent_email"):
 		cols = ["respondent_email"] + cols
 	headers = ["name"] + cols + ["workflow_state", "creation"]
+	# Hard cap: a synchronous CSV must never load an unbounded result set into memory.
+	# Forms past this size should export via a background job (future work).
+	cap = EXPORT_ROW_CAP
+	if frappe.db.count(dt) > cap:
+		frappe.throw(f"This form has more than {cap:,} responses — exporting that many at once isn't "
+			"supported yet. Filter or contact an administrator for a bulk export.")
 	rows = frappe.get_all(dt, fields=[h for h in headers if frappe.get_meta(dt).get_field(h) or h in ("name", "creation")],
-		order_by="creation desc")
+		order_by="creation desc", limit=cap)
 	buf = io.StringIO()
 	writer = csv.DictWriter(buf, fieldnames=headers, extrasaction="ignore")
 	writer.writeheader()

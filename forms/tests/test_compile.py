@@ -142,6 +142,43 @@ class TestCompile(IntegrationTestCase):
 		self.assertTrue(child.istable)
 		self.assertTrue(child.get_field("value"))
 
+	def test_reserved_fieldnames_are_not_system_columns(self):
+		# Labels that slugify to Frappe system columns must be suffixed so an answer can never
+		# overwrite owner / name / creation on the generated record.
+		form = make_form("reserved-test", [
+			{"label": "Owner", "field_type": "short_answer"},
+			{"label": "Name", "field_type": "short_answer"},
+			{"label": "Creation", "field_type": "short_answer"},
+		])
+		cc.freeze_fieldnames(form)
+		form.reload()
+		names = [f.fieldname for f in form.fields]
+		for reserved in ("owner", "name", "creation"):
+			self.assertNotIn(reserved, names, f"'{reserved}' must not be used as a fieldname")
+		# build_docfields agrees with the frozen names (no reserved column emitted).
+		df_names = [df["fieldname"] for df in cc.build_docfields(form)]
+		self.assertFalse(set(df_names) & cc.RESERVED_FIELDNAMES)
+
+	def test_republish_reconciles_changed_options_and_reqd(self):
+		form = make_form("reconcile-test", [
+			{"label": "Pick", "field_type": "single_choice", "options": "A\nB"},
+		], doctype_name="Reconcile Test Collection")
+		cc.publish(form.name)
+		dt_name = form.doctype_name
+		self.assertEqual(frappe.get_meta(dt_name).get_field("pick").options, "A\nB")
+
+		# Edit the option list and mark it required, then re-publish.
+		form.reload()
+		form.fields[0].options = "A\nB\nC"
+		form.fields[0].reqd = 1
+		form.save(ignore_permissions=True)
+		cc.publish(form.name)
+
+		frappe.clear_cache(doctype=dt_name)
+		pick = frappe.get_meta(dt_name).get_field("pick")
+		self.assertEqual(pick.options, "A\nB\nC", "edited options must take effect on re-publish")
+		self.assertTrue(pick.reqd, "newly-required flag must take effect on re-publish")
+
 	def test_publish_is_additive(self):
 		form = make_form("additive-test", [
 			{"label": "Keep", "field_type": "short_answer"},

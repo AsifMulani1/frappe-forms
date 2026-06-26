@@ -275,14 +275,44 @@ def upload_submission_file(slug: str, fieldname: str):
 	if ext not in ALLOWED_UPLOAD_EXT:
 		frappe.throw(f"'{ext or filename}' files are not allowed.")
 
+	# Tie the upload to its form so an unsubmitted file is identifiable (and reapable). On submit,
+	# _attach_file re-points it to the actual submission record; anything still attached to "FF Form"
+	# after a grace period was never submitted and gets cleaned up (see cleanup_orphan_uploads).
 	file_doc = frappe.get_doc({
 		"doctype": "File",
 		"file_name": filename,
 		"content": content,
 		"is_private": 1,
+		"attached_to_doctype": "FF Form",
+		"attached_to_name": form.name,
 	}).insert(ignore_permissions=True)
 	frappe.db.commit()
 	return {"file_url": file_doc.file_url, "file_name": file_doc.file_name}
+
+
+def cleanup_orphan_uploads():
+	"""Scheduled: delete private guest uploads that were never tied to a submission.
+
+	upload_submission_file parks files on their FF Form; a real submission re-points them to the
+	response record. Files still parked on "FF Form" after 2h are abandoned uploads — reap them so
+	guest uploads can't accumulate unbounded private-file storage."""
+	stale = frappe.get_all(
+		"File",
+		filters={
+			"attached_to_doctype": "FF Form",
+			"is_private": 1,
+			"creation": ("<", frappe.utils.add_to_date(None, hours=-2)),
+		},
+		pluck="name",
+		limit=500,
+	)
+	for name in stale:
+		try:
+			frappe.delete_doc("File", name, ignore_permissions=True, delete_permanently=True)
+		except Exception:
+			frappe.log_error(title="Forms orphan-upload cleanup failed")
+	if stale:
+		frappe.db.commit()
 
 
 @frappe.whitelist(allow_guest=True)
@@ -455,8 +485,9 @@ def _maybe_send_receipt(form, clean: dict, specs: dict, captured_email: str | No
 		f"Here's a copy for your records:</p><table>{rows}</table>"
 	)
 	try:
+		# Enqueued (not now=True): a slow/down mail server must never block or fail the submission.
 		frappe.sendmail(recipients=[recipient], subject=f"Your response to {form.title}",
-			message=message, now=True)
+			message=message)
 	except Exception:
 		frappe.log_error(title="Forms receipt email failed")
 

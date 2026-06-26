@@ -126,13 +126,13 @@ app_license = "mit"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+permission_query_conditions = {
+	"FF Form": "forms.permissions.get_permission_query_conditions",
+}
+
+has_permission = {
+	"FF Form": "forms.permissions.has_permission",
+}
 
 # Document Events
 # ---------------
@@ -149,23 +149,12 @@ app_license = "mit"
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"forms.tasks.all"
-# 	],
-# 	"daily": [
-# 		"forms.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"forms.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"forms.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"forms.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		# Reap private guest uploads that were never tied to a submission.
+		"forms.api.cleanup_orphan_uploads",
+	],
+}
 
 # Testing
 # -------

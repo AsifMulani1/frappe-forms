@@ -36,6 +36,17 @@ LAYOUT_TYPES = ("section_header",)
 CHOICE_TYPES = ("single_choice", "dropdown")  # newline-joined string options
 GRID_TYPES = ("mc_grid", "checkbox_grid")  # rows x columns -> a child table of {row, value}
 
+# Fieldnames a generated column may NEVER take: Frappe's own system columns (overwriting `owner`
+# or `name` corrupts ownership/identity), the child-table link columns, and this app's reserved
+# submission columns. A field whose label slugifies to one of these is suffixed (e.g. name_2).
+from frappe.model import default_fields as _DEFAULT_FIELDS  # noqa: E402
+
+RESERVED_FIELDNAMES = frozenset(_DEFAULT_FIELDS) | {
+	"parent", "parentfield", "parenttype", "idx",
+	"workflow_state", "edit_token", "respondent_email",
+	"value", "row",  # child-table columns generated for checkboxes / grids
+}
+
 
 def scrub_fieldname(label: str, fallback: str = "field") -> str:
 	"""snake_case ascii fieldname derived from a label."""
@@ -54,17 +65,24 @@ def resolve_fieldname(field) -> str:
 	return field.fieldname or scrub_fieldname(field.label, field.name or "field")
 
 
+def _dedupe(base: str, seen: set) -> str:
+	"""Return `base` (or base_2, base_3, …) avoiding `seen` and any reserved system column."""
+	candidate, n = base, 1
+	while candidate in seen or candidate in RESERVED_FIELDNAMES:
+		n += 1
+		candidate = f"{base}_{n}"
+	seen.add(candidate)
+	return candidate
+
+
 def freeze_fieldnames(form):
 	"""Set fieldname on any field lacking one, de-duped, and persist."""
 	seen = set()
 	for f in form.fields:
 		name = f.fieldname or scrub_fieldname(f.label, f.name or "field")
-		candidate, n = name, 1
-		while candidate in seen:
-			n += 1
-			candidate = f"{name}_{n}"
-		seen.add(candidate)
-		f.fieldname = candidate
+		# A frozen name that collides with a reserved column (e.g. an old form pre-dating this
+		# guard) is re-derived; an unfrozen one is deduped normally.
+		f.fieldname = _dedupe(name, seen)
 	form.save(ignore_permissions=True)
 
 
@@ -117,12 +135,7 @@ def build_docfields(form) -> list[dict]:
 	for f in form.fields:
 		if f.field_type in LAYOUT_TYPES:
 			continue  # display-only (e.g. section header) - no column
-		base = resolve_fieldname(f)
-		candidate, n = base, 1
-		while candidate in seen:
-			n += 1
-			candidate = f"{base}_{n}"
-		seen.add(candidate)
+		candidate = _dedupe(resolve_fieldname(f), seen)
 
 		df = {
 			"fieldname": candidate,
@@ -215,9 +228,17 @@ def _permissions() -> list[dict]:
 	]
 
 
+# DocField attributes we reconcile onto an already-published column on re-publish. Fieldtype is
+# deliberately excluded — changing a live column's type risks data loss / DDL failures — except the
+# Select<->Data swap a choice field makes when its "Other" write-in is toggled (both are varchar).
+_RECONCILE_ATTRS = ("label", "options", "reqd", "description")
+_VARCHAR_TYPES = {"Select", "Data"}
+
+
 def publish_collection(form):
 	"""Create the generated DocType, or run an additive-only sync if it already exists."""
-	doctype_name = form.doctype_name or title_case(form.slug)
+	# Frappe caps DocType names at 61 chars; a long title must not produce an invalid name.
+	doctype_name = (form.doctype_name or title_case(form.slug))[:61].strip()
 	form.doctype_name = doctype_name
 
 	# Child DocTypes for checkboxes (option master + link table) and grids must exist first.
@@ -264,16 +285,29 @@ def publish_collection(form):
 		for p in _permissions():
 			dt.append("permissions", p)
 		dt.insert(ignore_permissions=True)
+		frappe.clear_cache(doctype=doctype_name)
 		return dt.name
 
-	# Additive-only sync: append new fields, hide removed ones, never drop a column.
+	# Additive sync: append new fields, hide removed ones (never drop a column), and reconcile
+	# the editable attributes of fields that are still present.
 	dt = frappe.get_doc("DocType", doctype_name)
 	existing = {df.fieldname: df for df in dt.fields}
-	desired_names = {df["fieldname"] for df in desired}
+	desired_by_name = {df["fieldname"]: df for df in desired}
+	desired_names = set(desired_by_name)
 
-	for df in desired:
-		if df["fieldname"] not in existing:
+	for fieldname, df in desired_by_name.items():
+		col = existing.get(fieldname)
+		if col is None:
 			dt.append("fields", df)
+			continue
+		# Field still present: reconcile its mutable props so edited options/required/help take
+		# effect, and un-hide it if it was previously removed and has now been re-added.
+		for attr in _RECONCILE_ATTRS:
+			col.set(attr, df.get(attr) or (0 if attr == "reqd" else None))
+		if col.fieldtype != df["fieldtype"] and {col.fieldtype, df["fieldtype"]} <= _VARCHAR_TYPES:
+			col.fieldtype = df["fieldtype"]  # safe Select<->Data swap (Other write-in toggled)
+		col.hidden = 0
+		col.read_only = 0
 
 	# Backfill system columns on DocTypes generated before these features existed.
 	if "edit_token" not in existing:
@@ -292,6 +326,7 @@ def publish_collection(form):
 			df.read_only = 1
 
 	dt.save(ignore_permissions=True)
+	frappe.clear_cache(doctype=doctype_name)
 	return dt.name
 
 
@@ -343,6 +378,8 @@ def publish(form_name: str):
 @frappe.whitelist()
 def compile_preview(form_name: str) -> dict:
 	"""Return the would-be DocType (Collection) or Web Form (Linked) JSON without writing."""
+	if not frappe.has_permission("FF Form", "read", doc=form_name):
+		frappe.throw("You don't have access to this form.", frappe.PermissionError)
 	form = frappe.get_doc("FF Form", form_name)
 
 	if form.storage_mode == "Linked":
