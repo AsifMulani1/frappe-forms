@@ -8,12 +8,26 @@
   "label",
   "field_type",
   "reqd",
+  "has_other",
   "column_break_1",
   "fieldname",
   "mapped_field",
+  "shuffle_options",
   "section_break_1",
   "help_text",
-  "options"
+  "options",
+  "grid_rows",
+  "validation_section",
+  "min_value",
+  "max_value",
+  "max_length",
+  "validation_pattern",
+  "error_message",
+  "scale_section",
+  "scale_min",
+  "scale_max",
+  "min_label",
+  "max_label"
  ],
  "fields": [
   {
@@ -28,7 +42,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Field Type",
-   "options": "short_answer\nparagraph\nemail\nnumber\nsingle_choice\ndropdown\ncheckboxes\ndate\nrating\nyes_no\nphone\ntime\naddress\nfile_upload\nsignature\nsection_header",
+   "options": "short_answer\nparagraph\nemail\nnumber\nsingle_choice\ndropdown\ncheckboxes\ndate\nrating\nlinear_scale\nmc_grid\ncheckbox_grid\nyes_no\nphone\ntime\naddress\nfile_upload\nsignature\nsection_header",
    "reqd": 1
   },
   {
@@ -64,10 +78,93 @@
    "label": "Help Text"
   },
   {
-   "description": "Newline-joined for choice types.",
+   "description": "Newline-joined for choice types. Column labels for grids.",
    "fieldname": "options",
    "fieldtype": "Small Text",
    "label": "Options"
+  },
+  {
+   "description": "Newline-joined row labels (grid types).",
+   "fieldname": "grid_rows",
+   "fieldtype": "Small Text",
+   "label": "Grid rows"
+  },
+  {
+   "default": "0",
+   "description": "Adds a free-text 'Other' choice (single choice / dropdown).",
+   "fieldname": "has_other",
+   "fieldtype": "Check",
+   "label": "Allow \"Other\""
+  },
+  {
+   "default": "0",
+   "description": "Randomise option order per respondent.",
+   "fieldname": "shuffle_options",
+   "fieldtype": "Check",
+   "label": "Shuffle options"
+  },
+  {
+   "fieldname": "validation_section",
+   "fieldtype": "Section Break",
+   "label": "Validation"
+  },
+  {
+   "description": "Minimum (number). Blank = no minimum.",
+   "fieldname": "min_value",
+   "fieldtype": "Data",
+   "label": "Min value"
+  },
+  {
+   "description": "Maximum (number). Blank = no maximum.",
+   "fieldname": "max_value",
+   "fieldtype": "Data",
+   "label": "Max value"
+  },
+  {
+   "default": "0",
+   "description": "Maximum characters (text). 0 = unlimited.",
+   "fieldname": "max_length",
+   "fieldtype": "Int",
+   "label": "Max length"
+  },
+  {
+   "description": "Regex the answer must fully match (text).",
+   "fieldname": "validation_pattern",
+   "fieldtype": "Data",
+   "label": "Pattern"
+  },
+  {
+   "description": "Shown when validation fails.",
+   "fieldname": "error_message",
+   "fieldtype": "Data",
+   "label": "Custom error message"
+  },
+  {
+   "fieldname": "scale_section",
+   "fieldtype": "Section Break",
+   "label": "Linear scale"
+  },
+  {
+   "default": "1",
+   "fieldname": "scale_min",
+   "fieldtype": "Int",
+   "label": "Scale min"
+  },
+  {
+   "default": "5",
+   "fieldname": "scale_max",
+   "fieldtype": "Int",
+   "label": "Scale max"
+  },
+  {
+   "fieldname": "min_label",
+   "fieldtype": "Data",
+   "label": "Min label"
+  },
+  {
+   "fieldname": "max_label",
+   "fieldtype": "Data",
+   "label": "Max label"
   }
  ],
  "istable": 1,

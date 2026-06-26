@@ -66,6 +66,31 @@ class TestCompile(IntegrationTestCase):
 		self.assertEqual(dfs["File"]["fieldtype"], "Attach")
 		self.assertEqual(dfs["Sign"]["fieldtype"], "Signature")
 
+	def test_linear_scale_maps_to_int(self):
+		form = make_form("scale-test", [{"label": "NPS", "field_type": "linear_scale"}])
+		df = cc.build_docfields(form)[0]
+		self.assertEqual(df["fieldtype"], "Int")
+
+	def test_has_other_choice_compiles_to_data(self):
+		# An "Other" write-in can't fit a constrained Select, so it compiles to free-text Data.
+		form = make_form("other-test", [
+			{"label": "Plain", "field_type": "single_choice", "options": "A\nB"},
+			{"label": "Withother", "field_type": "single_choice", "options": "A\nB", "has_other": 1},
+		])
+		dfs = {df["label"]: df for df in cc.build_docfields(form)}
+		self.assertEqual(dfs["Plain"]["fieldtype"], "Select")
+		self.assertEqual(dfs["Plain"]["options"], "A\nB")
+		self.assertEqual(dfs["Withother"]["fieldtype"], "Data")
+		self.assertNotIn("options", dfs["Withother"])
+
+	def test_grid_compiles_to_table(self):
+		form = make_form("grid-c-test", [
+			{"label": "Matrix", "field_type": "mc_grid", "grid_rows": "R1\nR2", "options": "C1\nC2"},
+		])
+		df = cc.build_docfields(form)[0]
+		self.assertEqual(df["fieldtype"], "Table")
+		self.assertTrue(df["options"])  # points at the generated grid child DocType
+
 	def test_section_header_omitted(self):
 		form = make_form("layout-test", [
 			{"label": "Your details", "field_type": "section_header"},

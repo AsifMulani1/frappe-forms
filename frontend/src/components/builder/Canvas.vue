@@ -1,8 +1,8 @@
 <script setup>
-import { Button, Dropdown, Switch } from 'frappe-ui'
+import { Button, Dropdown, FormControl, Switch } from 'frappe-ui'
 import Icon from '../Icon.vue'
 import FieldTypePicker from './FieldTypePicker.vue'
-import { FT, FIELD_TYPES, isLayout } from '../../fieldTypes'
+import { FT, FIELD_TYPES, isLayout, canHaveOther, canShuffleOptions, isText, isGrid } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
 
 import { ref } from 'vue'
@@ -88,6 +88,34 @@ function removeOption(field, i) {
   arr.splice(i, 1)
   emit('update-field', field.name, { options: arr.join('\n') })
 }
+
+// Grid rows live in grid_rows (columns reuse `options`, edited via the option helpers above).
+function rowsArray(field) {
+  return (field.grid_rows || '').split('\n').filter((o) => o.length)
+}
+function setRow(field, i, val) {
+  const arr = (field.grid_rows || '').split('\n')
+  arr[i] = val
+  emit('update-field', field.name, { grid_rows: arr.join('\n') })
+}
+function addRow(field) {
+  const arr = (field.grid_rows || '').split('\n').filter((x) => x.length)
+  arr.push(`Row ${arr.length + 1}`)
+  emit('update-field', field.name, { grid_rows: arr.join('\n') })
+}
+function removeRow(field, i) {
+  const arr = (field.grid_rows || '').split('\n').filter((x) => x.length)
+  arr.splice(i, 1)
+  emit('update-field', field.name, { grid_rows: arr.join('\n') })
+}
+
+// Inclusive integer range for a linear-scale field, clamped to a sane span.
+function scaleRange(field) {
+  let lo = Number.isFinite(+field.scale_min) ? +field.scale_min : 1
+  let hi = Number.isFinite(+field.scale_max) ? +field.scale_max : 5
+  if (hi <= lo || hi - lo > 14) { lo = 1; hi = 5 }
+  return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
+}
 </script>
 
 <template>
@@ -144,6 +172,9 @@ function removeOption(field, i) {
         <input v-if="f.help_text || selectedId === f.name" class="edit-line text-[13px] text-ink-gray-5 mb-1"
                :value="f.help_text" :placeholder="isLayout(f.field_type) ? 'Add a subtitle (optional)' : 'Add a description (optional)'"
                @click.stop @input="emit('update-field', f.name, { help_text: $event.target.value })" />
+        <div v-if="isLayout(f.field_type)" class="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-ink-gray-5 bg-surface-gray-2 rounded px-1.5 py-0.5 w-fit">
+          <Icon name="corner-down-right" :size="11" />Starts a new page for respondents
+        </div>
 
         <!-- preview controls (none for display-only blocks like section headers) -->
         <div v-if="!isLayout(f.field_type)" class="mt-2.5">
@@ -170,6 +201,52 @@ function removeOption(field, i) {
           <div v-else-if="f.field_type === 'rating'" class="flex gap-1">
             <Icon v-for="s in 5" :key="s" name="star" :size="22" class="text-ink-gray-3" />
           </div>
+          <div v-else-if="f.field_type === 'linear_scale'" class="flex items-center gap-3">
+            <span v-if="f.min_label" class="text-sm text-ink-gray-5">{{ f.min_label }}</span>
+            <div class="flex items-center gap-3">
+              <div v-for="n in scaleRange(f)" :key="n" class="flex flex-col items-center gap-1">
+                <span class="text-[12px] text-ink-gray-6">{{ n }}</span><span class="prev-radio" />
+              </div>
+            </div>
+            <span v-if="f.max_label" class="text-sm text-ink-gray-5">{{ f.max_label }}</span>
+          </div>
+
+          <!-- grid (rows x columns) -->
+          <div v-else-if="isGrid(f.field_type)" class="overflow-x-auto">
+            <table class="grid-prev">
+              <thead>
+                <tr>
+                  <th class="w-[120px]"></th>
+                  <th v-for="(col, ci) in optionsArray(f)" :key="ci">
+                    <input v-if="selectedId === f.name" class="edit-line text-[12px] text-center w-[72px]" :value="col"
+                           :placeholder="`Col ${ci + 1}`" @click.stop @input="setOption(f, ci, $event.target.value)" />
+                    <span v-else class="text-[12px] text-ink-gray-6">{{ col }}</span>
+                  </th>
+                  <th v-if="selectedId === f.name" class="w-7">
+                    <button class="text-ink-gray-4 hover:text-ink-gray-7" title="Add column" @click.stop="addOption(f)"><Icon name="plus" :size="13" /></button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, ri) in rowsArray(f)" :key="ri">
+                  <td class="text-left">
+                    <input v-if="selectedId === f.name" class="edit-line text-[13px]" :value="row"
+                           :placeholder="`Row ${ri + 1}`" @click.stop @input="setRow(f, ri, $event.target.value)" />
+                    <span v-else class="text-[13px] text-ink-gray-7">{{ row }}</span>
+                  </td>
+                  <td v-for="(col, ci) in optionsArray(f)" :key="ci" class="text-center">
+                    <span :class="f.field_type === 'mc_grid' ? 'prev-radio' : 'prev-check'" class="inline-block" />
+                  </td>
+                  <td v-if="selectedId === f.name" class="text-center">
+                    <button v-if="rowsArray(f).length > 1" class="text-ink-gray-4 hover:text-ink-gray-7" title="Remove row" @click.stop="removeRow(f, ri)"><Icon name="x" :size="13" /></button>
+                  </td>
+                </tr>
+                <tr v-if="selectedId === f.name">
+                  <td class="text-left"><button class="text-sm text-ink-gray-6 hover:text-ink-gray-9" @click.stop="addRow(f)">+ Add row</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else-if="f.field_type === 'yes_no'" class="flex items-center gap-2">
             <span class="prev-radio" /><span class="text-sm text-ink-gray-5">Yes</span>
           </div>
@@ -182,25 +259,70 @@ function removeOption(field, i) {
               <button v-if="selectedId === f.name && optionsArray(f).length > 1" class="p-0.5 rounded hover:bg-surface-gray-2 text-ink-gray-4"
                       title="Remove option" @click.stop="removeOption(f, oi)"><Icon name="x" :size="13" /></button>
             </div>
+            <div v-if="f.has_other" class="opt-row">
+              <span :class="f.field_type === 'single_choice' ? 'prev-radio' : 'prev-check'" />
+              <span class="text-sm text-ink-gray-5 italic">Other…</span>
+            </div>
             <div v-if="selectedId === f.name" class="opt-row cursor-pointer" @click.stop="addOption(f)">
               <span :class="f.field_type === 'single_choice' ? 'prev-radio' : 'prev-check'" style="opacity:.4" />
               <span class="text-sm text-ink-gray-6">Add option</span>
             </div>
           </div>
+          <!-- dropdown "Other" hint -->
+          <div v-if="f.field_type === 'dropdown' && f.has_other" class="text-[12px] text-ink-gray-5 italic mt-1.5">+ Other…</div>
         </div>
 
-        <!-- inline field controls (minimal mode): change type + required, on the selected card -->
+        <!-- inline field controls (minimal mode): change type + required + per-type options -->
         <div v-if="!prefs.devMode && selectedId === f.name"
-             class="flex items-center gap-3 mt-4 pt-3 border-t border-outline-gray-1" @click.stop>
-          <Dropdown :options="typeOptions(f)">
-            <button class="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-outline-gray-2 text-sm text-ink-gray-7 hover:bg-surface-gray-2 transition-colors">
-              <Icon :name="FT[f.field_type].icon" :size="14" />{{ FT[f.field_type].label }}
-              <Icon name="chevron-down" :size="13" class="text-ink-gray-4" />
-            </button>
-          </Dropdown>
-          <div v-if="!isLayout(f.field_type)" class="ml-auto flex items-center gap-2">
-            <span class="text-sm text-ink-gray-7">Required</span>
-            <Switch :modelValue="!!f.reqd" @update:modelValue="emit('update-field', f.name, { reqd: $event ? 1 : 0 })" />
+             class="flex flex-col gap-3 mt-4 pt-3 border-t border-outline-gray-1" @click.stop>
+          <div class="flex items-center gap-3">
+            <Dropdown :options="typeOptions(f)">
+              <button class="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-outline-gray-2 text-sm text-ink-gray-7 hover:bg-surface-gray-2 transition-colors">
+                <Icon :name="FT[f.field_type].icon" :size="14" />{{ FT[f.field_type].label }}
+                <Icon name="chevron-down" :size="13" class="text-ink-gray-4" />
+              </button>
+            </Dropdown>
+            <div v-if="!isLayout(f.field_type)" class="ml-auto flex items-center gap-2">
+              <span class="text-sm text-ink-gray-7">Required</span>
+              <Switch :modelValue="!!f.reqd" @update:modelValue="emit('update-field', f.name, { reqd: $event ? 1 : 0 })" />
+            </div>
+          </div>
+
+          <!-- linear scale: range + end labels -->
+          <div v-if="f.field_type === 'linear_scale'" class="flex flex-wrap items-end gap-3">
+            <label class="flex flex-col gap-1"><span class="text-[12px] text-ink-gray-6">From</span>
+              <select class="cfg-input w-[64px]" :value="f.scale_min ?? 1" @change="emit('update-field', f.name, { scale_min: +$event.target.value })">
+                <option v-for="n in [0, 1]" :key="n" :value="n">{{ n }}</option>
+              </select></label>
+            <label class="flex flex-col gap-1"><span class="text-[12px] text-ink-gray-6">To</span>
+              <select class="cfg-input w-[64px]" :value="f.scale_max ?? 5" @change="emit('update-field', f.name, { scale_max: +$event.target.value })">
+                <option v-for="n in [2, 3, 4, 5, 6, 7, 8, 9, 10]" :key="n" :value="n">{{ n }}</option>
+              </select></label>
+            <input class="cfg-input flex-1 min-w-[120px]" :value="f.min_label" placeholder="Label for low (optional)"
+                   @input="emit('update-field', f.name, { min_label: $event.target.value })" />
+            <input class="cfg-input flex-1 min-w-[120px]" :value="f.max_label" placeholder="Label for high (optional)"
+                   @input="emit('update-field', f.name, { max_label: $event.target.value })" />
+          </div>
+
+          <!-- number: min / max -->
+          <div v-if="f.field_type === 'number'" class="flex items-end gap-3">
+            <input class="cfg-input w-[100px]" :value="f.min_value" placeholder="Min" inputmode="numeric"
+                   @input="emit('update-field', f.name, { min_value: $event.target.value })" />
+            <input class="cfg-input w-[100px]" :value="f.max_value" placeholder="Max" inputmode="numeric"
+                   @input="emit('update-field', f.name, { max_value: $event.target.value })" />
+          </div>
+
+          <!-- text: max length -->
+          <div v-if="isText(f.field_type)" class="flex items-center gap-2">
+            <span class="text-sm text-ink-gray-7">Max length</span>
+            <input class="cfg-input w-[100px]" :value="f.max_length || ''" placeholder="No limit" inputmode="numeric"
+                   @input="emit('update-field', f.name, { max_length: +$event.target.value || 0 })" />
+          </div>
+
+          <!-- choice: shuffle + other -->
+          <div v-if="canShuffleOptions(f.field_type)" class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <label class="flex items-center gap-2"><Switch :modelValue="!!f.shuffle_options" @update:modelValue="emit('update-field', f.name, { shuffle_options: $event ? 1 : 0 })" /><span class="text-sm text-ink-gray-7">Shuffle options</span></label>
+            <label v-if="canHaveOther(f.field_type)" class="flex items-center gap-2"><Switch :modelValue="!!f.has_other" @update:modelValue="emit('update-field', f.name, { has_other: $event ? 1 : 0 })" /><span class="text-sm text-ink-gray-7">Add “Other”</span></label>
           </div>
         </div>
         </div>

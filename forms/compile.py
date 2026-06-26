@@ -19,6 +19,9 @@ FIELD_TYPE_MAP = {
 	"checkboxes": "Table MultiSelect",
 	"date": "Date",
 	"rating": "Rating",
+	"linear_scale": "Int",
+	"mc_grid": "Table",
+	"checkbox_grid": "Table",
 	"yes_no": "Check",
 	"phone": "Data",
 	"time": "Time",
@@ -31,6 +34,7 @@ FIELD_TYPE_MAP = {
 LAYOUT_TYPES = ("section_header",)
 
 CHOICE_TYPES = ("single_choice", "dropdown")  # newline-joined string options
+GRID_TYPES = ("mc_grid", "checkbox_grid")  # rows x columns -> a child table of {row, value}
 
 
 def scrub_fieldname(label: str, fallback: str = "field") -> str:
@@ -81,6 +85,27 @@ def _option_master_name(form, fieldname: str) -> str:
 	return name[:61].strip()
 
 
+def _grid_doctype_name(form, fieldname: str) -> str:
+	"""Child (table) DocType name for a grid field - one row per answered grid-row."""
+	parent = form.doctype_name or title_case(form.slug)
+	name = f"{parent} {title_case(fieldname)} Grid"
+	return name[:61].strip()
+
+
+def _ensure_grid_doctype(name: str):
+	"""istable DocType with {row, value} Data columns backing a grid field."""
+	if frappe.db.exists("DocType", name):
+		return
+	child = frappe.new_doc("DocType")
+	child.name = name
+	child.module = "Forms"
+	child.custom = 1
+	child.istable = 1
+	child.append("fields", {"fieldname": "row", "label": "Row", "fieldtype": "Data", "in_list_view": 1})
+	child.append("fields", {"fieldname": "value", "label": "Value", "fieldtype": "Data", "in_list_view": 1})
+	child.insert(ignore_permissions=True)
+
+
 def build_docfields(form) -> list[dict]:
 	"""Translate FF Form fields into a list of Frappe DocField dicts.
 
@@ -107,9 +132,17 @@ def build_docfields(form) -> list[dict]:
 		if f.field_type == "email":
 			df["options"] = "Email"
 		elif f.field_type in CHOICE_TYPES:
-			df["options"] = newline_options(f.options)
+			# An "Other" write-in means an arbitrary string can land here, so we can't compile to a
+			# constrained Select (Frappe would reject the free-text value). Store as plain Data and
+			# let the submission API enforce membership-or-other. Frozen at publish like the schema.
+			if f.get("has_other"):
+				df["fieldtype"] = "Data"
+			else:
+				df["options"] = newline_options(f.options)
 		elif f.field_type == "checkboxes":
 			df["options"] = _child_doctype_name(form, candidate)
+		elif f.field_type in GRID_TYPES:
+			df["options"] = _grid_doctype_name(form, candidate)
 
 		if f.reqd:
 			df["reqd"] = 1
@@ -187,10 +220,12 @@ def publish_collection(form):
 	doctype_name = form.doctype_name or title_case(form.slug)
 	form.doctype_name = doctype_name
 
-	# Option master + child link table for any checkboxes fields must exist first.
+	# Child DocTypes for checkboxes (option master + link table) and grids must exist first.
 	for f in form.fields:
 		if f.field_type == "checkboxes":
 			ensure_checkbox_doctypes(form, f)
+		elif f.field_type in GRID_TYPES:
+			_ensure_grid_doctype(_grid_doctype_name(form, resolve_fieldname(f)))
 
 	desired = build_docfields(form)
 
@@ -211,6 +246,21 @@ def publish_collection(form):
 			"fieldtype": "Data",
 			"hidden": 1,
 		})
+		# Private per-submission token backing the "edit your response" link.
+		dt.append("fields", {
+			"fieldname": "edit_token",
+			"label": "Edit Token",
+			"fieldtype": "Data",
+			"hidden": 1,
+			"no_copy": 1,
+		})
+		# Respondent's email (captured when the form has "Collect email" on).
+		dt.append("fields", {
+			"fieldname": "respondent_email",
+			"label": "Respondent Email",
+			"fieldtype": "Data",
+			"options": "Email",
+		})
 		for p in _permissions():
 			dt.append("permissions", p)
 		dt.insert(ignore_permissions=True)
@@ -225,8 +275,17 @@ def publish_collection(form):
 		if df["fieldname"] not in existing:
 			dt.append("fields", df)
 
+	# Backfill system columns on DocTypes generated before these features existed.
+	if "edit_token" not in existing:
+		dt.append("fields", {"fieldname": "edit_token", "label": "Edit Token", "fieldtype": "Data",
+			"hidden": 1, "no_copy": 1})
+	if "respondent_email" not in existing:
+		dt.append("fields", {"fieldname": "respondent_email", "label": "Respondent Email",
+			"fieldtype": "Data", "options": "Email"})
+
+	system_fields = {"workflow_state", "edit_token", "respondent_email"}
 	for df in dt.fields:
-		if df.fieldname == "workflow_state":
+		if df.fieldname in system_fields:
 			continue
 		if df.fieldname not in desired_names:
 			df.hidden = 1
@@ -309,7 +368,7 @@ def compile_preview(form_name: str) -> dict:
 			"login_required": cint_bool(form.login_required),
 			"anonymous": 0 if form.login_required else 1,
 			"allow_multiple": cint_bool(form.allow_multiple),
-			"apply_document_permissions": 1,
+			"apply_document_permissions": cint_bool(form.apply_doc_perms),
 			"web_form_fields": fields,
 		}
 

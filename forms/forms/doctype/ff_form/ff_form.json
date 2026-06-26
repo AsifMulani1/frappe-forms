@@ -27,6 +27,13 @@
   "login_required",
   "allow_multiple",
   "collect_email",
+  "apply_doc_perms",
+  "shuffle_questions",
+  "show_progress",
+  "email_receipt",
+  "allow_edit",
+  "show_my_submissions",
+  "allow_delete",
   "fields_section",
   "fields"
  ],
@@ -167,6 +174,56 @@
    "fieldname": "collect_email",
    "fieldtype": "Check",
    "label": "Collect Email Addresses"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.storage_mode=='Linked'",
+   "description": "Linked mode: enforce the target DocType's permissions for the submitting user (requires login) instead of inserting as the system.",
+   "fieldname": "apply_doc_perms",
+   "fieldtype": "Check",
+   "label": "Apply Document Permissions"
+  },
+  {
+   "default": "0",
+   "description": "Randomise the order questions appear in for each respondent.",
+   "fieldname": "shuffle_questions",
+   "fieldtype": "Check",
+   "label": "Shuffle Questions"
+  },
+  {
+   "default": "1",
+   "description": "Show the completion progress bar to respondents.",
+   "fieldname": "show_progress",
+   "fieldtype": "Check",
+   "label": "Show Progress Bar"
+  },
+  {
+   "default": "0",
+   "description": "Email respondents a copy of their answers after they submit.",
+   "fieldname": "email_receipt",
+   "fieldtype": "Check",
+   "label": "Email Receipt"
+  },
+  {
+   "default": "0",
+   "description": "Let respondents edit their response after submitting (via a private link).",
+   "fieldname": "allow_edit",
+   "fieldtype": "Check",
+   "label": "Allow Editing Responses"
+  },
+  {
+   "default": "0",
+   "description": "Show signed-in respondents a list of their own past submissions.",
+   "fieldname": "show_my_submissions",
+   "fieldtype": "Check",
+   "label": "Show My Submissions"
+  },
+  {
+   "default": "0",
+   "description": "Let respondents delete their own submissions from the list.",
+   "fieldname": "allow_delete",
+   "fieldtype": "Check",
+   "label": "Allow Deleting Responses"
   },
   {
    "fieldname": "fields_section",

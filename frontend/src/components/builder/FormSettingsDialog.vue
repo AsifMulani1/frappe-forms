@@ -54,6 +54,12 @@ function onCover(file) {
           <Switch :modelValue="!!form.collect_email" label="Collect email addresses" @update:modelValue="set({ collect_email: $event ? 1 : 0 })" />
           <Switch :modelValue="!form.allow_multiple" label="One response per user" @update:modelValue="set({ allow_multiple: $event ? 0 : 1 })" />
           <Switch :modelValue="!!form.login_required" label="Login required" @update:modelValue="set({ login_required: $event ? 1 : 0 })" />
+          <Switch :modelValue="!!form.shuffle_questions" label="Shuffle question order" @update:modelValue="set({ shuffle_questions: $event ? 1 : 0 })" />
+          <Switch :modelValue="form.show_progress !== 0" label="Show progress bar" @update:modelValue="set({ show_progress: $event ? 1 : 0 })" />
+          <Switch :modelValue="!!form.email_receipt" label="Email respondents a receipt" @update:modelValue="set({ email_receipt: $event ? 1 : 0 })" />
+          <Switch :modelValue="!!form.allow_edit" label="Allow editing responses" @update:modelValue="set({ allow_edit: $event ? 1 : 0 })" />
+          <Switch :modelValue="!!form.show_my_submissions" label="Show respondents their submissions" @update:modelValue="set({ show_my_submissions: $event ? 1 : 0 })" />
+          <Switch v-if="form.show_my_submissions" :modelValue="!!form.allow_delete" label="Allow deleting responses" @update:modelValue="set({ allow_delete: $event ? 1 : 0 })" />
           <Switch :modelValue="!!form.is_template" label="Use as template" @update:modelValue="set({ is_template: $event ? 1 : 0 })" />
           <FormControl v-if="form.is_template" type="select" label="Template category"
             :options="CATEGORIES.map((c) => ({ label: c || 'Uncategorized', value: c }))"

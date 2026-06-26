@@ -2,7 +2,7 @@
 import { computed, watch } from 'vue'
 import { Badge, Button, FormControl, Switch, TabButtons, createResource } from 'frappe-ui'
 import Icon from '../Icon.vue'
-import { FIELD_TYPES, FT, hasOptions } from '../../fieldTypes'
+import { FIELD_TYPES, FT, hasOptions, canHaveOther, canShuffleOptions, isText } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
 
 const props = defineProps({ form: Object, field: Object })
@@ -62,6 +62,11 @@ function setStorage(mode) {
           :options="[{ label: 'Contact', value: 'Contact' }, { label: 'ToDo', value: 'ToDo' }]"
           :modelValue="form.target_doctype" @update:modelValue="emit('update-meta', { target_doctype: $event })" />
         <div><Badge :theme="mappedCount < form.fields.length ? 'orange' : 'green'" :label="`${mappedCount}/${form.fields.length} mapped`" /></div>
+        <Switch :modelValue="!!form.apply_doc_perms" label="Apply document permissions"
+          @update:modelValue="emit('update-meta', { apply_doc_perms: $event ? 1 : 0 })" />
+        <span class="text-[11.5px] text-ink-gray-5">
+          {{ form.apply_doc_perms ? 'Submitter must be signed in and permitted to create the target record.' : 'Submissions are inserted as the system (guests allowed).' }}
+        </span>
       </div>
       <div v-else-if="prefs.devMode" class="flex flex-col gap-1.5 px-4 py-3.5 border-b border-outline-gray-1">
         <span class="text-xs text-ink-gray-7">New DocType</span>
@@ -86,6 +91,12 @@ function setStorage(mode) {
         <Switch :modelValue="!!form.collect_email" label="Collect email addresses" @update:modelValue="emit('update-meta', { collect_email: $event ? 1 : 0 })" />
         <Switch :modelValue="!form.allow_multiple" label="One response per user" @update:modelValue="emit('update-meta', { allow_multiple: $event ? 0 : 1 })" />
         <Switch :modelValue="!!form.login_required" label="Login required" @update:modelValue="emit('update-meta', { login_required: $event ? 1 : 0 })" />
+        <Switch :modelValue="!!form.shuffle_questions" label="Shuffle questions" @update:modelValue="emit('update-meta', { shuffle_questions: $event ? 1 : 0 })" />
+        <Switch :modelValue="form.show_progress !== 0" label="Show progress bar" @update:modelValue="emit('update-meta', { show_progress: $event ? 1 : 0 })" />
+        <Switch :modelValue="!!form.email_receipt" label="Email receipt" @update:modelValue="emit('update-meta', { email_receipt: $event ? 1 : 0 })" />
+        <Switch :modelValue="!!form.allow_edit" label="Allow editing responses" @update:modelValue="emit('update-meta', { allow_edit: $event ? 1 : 0 })" />
+        <Switch :modelValue="!!form.show_my_submissions" label="Show my submissions" @update:modelValue="emit('update-meta', { show_my_submissions: $event ? 1 : 0 })" />
+        <Switch v-if="form.show_my_submissions" :modelValue="!!form.allow_delete" label="Allow deleting responses" @update:modelValue="emit('update-meta', { allow_delete: $event ? 1 : 0 })" />
         <Switch :modelValue="!!form.is_template" label="Use as template" @update:modelValue="emit('update-meta', { is_template: $event ? 1 : 0 })" />
       </div>
 
@@ -138,6 +149,37 @@ function setStorage(mode) {
       <div v-if="hasOptions(field.field_type)" class="px-4 py-3.5 border-b border-outline-gray-1">
         <span class="text-xs text-ink-gray-7">Options</span>
         <span class="text-[11.5px] text-ink-gray-5 block mt-1">Edit options inline on the card.</span>
+      </div>
+
+      <!-- linear scale -->
+      <div v-if="field.field_type === 'linear_scale'" class="flex flex-col gap-3 px-4 py-3.5 border-b border-outline-gray-1">
+        <div class="flex gap-2">
+          <FormControl type="select" label="From" class="flex-1" :options="[{ label: '0', value: 0 }, { label: '1', value: 1 }]"
+            :modelValue="field.scale_min ?? 1" @update:modelValue="emit('update-field', field.name, { scale_min: +$event })" />
+          <FormControl type="select" label="To" class="flex-1" :options="[2,3,4,5,6,7,8,9,10].map((n) => ({ label: `${n}`, value: n }))"
+            :modelValue="field.scale_max ?? 5" @update:modelValue="emit('update-field', field.name, { scale_max: +$event })" />
+        </div>
+        <FormControl type="text" label="Low label" placeholder="Optional" :modelValue="field.min_label" @update:modelValue="emit('update-field', field.name, { min_label: $event })" />
+        <FormControl type="text" label="High label" placeholder="Optional" :modelValue="field.max_label" @update:modelValue="emit('update-field', field.name, { max_label: $event })" />
+      </div>
+
+      <!-- number bounds -->
+      <div v-if="field.field_type === 'number'" class="flex gap-2 px-4 py-3.5 border-b border-outline-gray-1">
+        <FormControl type="text" label="Min" placeholder="None" class="flex-1" :modelValue="field.min_value" @update:modelValue="emit('update-field', field.name, { min_value: $event })" />
+        <FormControl type="text" label="Max" placeholder="None" class="flex-1" :modelValue="field.max_value" @update:modelValue="emit('update-field', field.name, { max_value: $event })" />
+      </div>
+
+      <!-- text validation -->
+      <div v-if="isText(field.field_type)" class="flex flex-col gap-3 px-4 py-3.5 border-b border-outline-gray-1">
+        <FormControl type="number" label="Max length" placeholder="No limit" :modelValue="field.max_length || ''" @update:modelValue="emit('update-field', field.name, { max_length: +$event || 0 })" />
+        <FormControl type="text" label="Pattern (regex)" placeholder="Optional" :modelValue="field.validation_pattern" @update:modelValue="emit('update-field', field.name, { validation_pattern: $event })" />
+        <FormControl type="text" label="Custom error" placeholder="Optional" :modelValue="field.error_message" @update:modelValue="emit('update-field', field.name, { error_message: $event })" />
+      </div>
+
+      <!-- choice: shuffle + other -->
+      <div v-if="canShuffleOptions(field.field_type)" class="flex flex-col gap-3 px-4 py-3.5 border-b border-outline-gray-1">
+        <Switch :modelValue="!!field.shuffle_options" label="Shuffle options" @update:modelValue="emit('update-field', field.name, { shuffle_options: $event ? 1 : 0 })" />
+        <Switch v-if="canHaveOther(field.field_type)" :modelValue="!!field.has_other" label="Add “Other” option" @update:modelValue="emit('update-field', field.name, { has_other: $event ? 1 : 0 })" />
       </div>
 
       <div class="flex flex-col gap-3 px-4 py-3.5 border-b border-outline-gray-1">

@@ -4,6 +4,8 @@
 # Authenticated endpoints backing the builder SPA (dashboard, builder, responses).
 # All data is read LIVE from the database - no hardcoded values anywhere.
 
+import re
+
 import frappe
 import frappe.share  # ensure frappe.share is loaded for add/remove (not always auto-imported)
 from frappe.utils import cint, flt
@@ -126,6 +128,13 @@ def _form_dict(form) -> dict:
 		"login_required": cint(form.login_required),
 		"allow_multiple": cint(form.allow_multiple),
 		"collect_email": cint(form.collect_email),
+		"apply_doc_perms": cint(form.apply_doc_perms),
+		"shuffle_questions": cint(form.shuffle_questions),
+		"show_progress": cint(form.show_progress),
+		"email_receipt": cint(form.email_receipt),
+		"allow_edit": cint(form.allow_edit),
+		"show_my_submissions": cint(form.show_my_submissions),
+		"allow_delete": cint(form.allow_delete),
 		"thank_you_message": form.thank_you_message,
 		"redirect_url": form.redirect_url,
 		"archived": cint(form.archived),
@@ -139,7 +148,19 @@ def _form_dict(form) -> dict:
 				"reqd": cint(f.reqd),
 				"help_text": f.help_text,
 				"options": f.options,
+				"grid_rows": f.grid_rows,
 				"mapped_field": f.mapped_field,
+				"has_other": cint(f.has_other),
+				"shuffle_options": cint(f.shuffle_options),
+				"min_value": f.min_value,
+				"max_value": f.max_value,
+				"max_length": cint(f.max_length),
+				"validation_pattern": f.validation_pattern,
+				"error_message": f.error_message,
+				"scale_min": cint(f.scale_min) or 1,
+				"scale_max": cint(f.scale_max) or 5,
+				"min_label": f.min_label,
+				"max_label": f.max_label,
 			}
 			for f in form.fields
 		],
@@ -176,6 +197,8 @@ def save_form(name: str, data: str) -> dict:
 
 	for key in ("title", "description", "accent", "cover_image", "category", "storage_mode",
 			"target_doctype", "login_required", "allow_multiple", "collect_email",
+			"apply_doc_perms", "shuffle_questions", "show_progress", "email_receipt", "allow_edit",
+			"show_my_submissions", "allow_delete",
 			"thank_you_message", "redirect_url", "is_template"):
 		if key in payload:
 			doc.set(key, payload[key])
@@ -191,7 +214,19 @@ def save_form(name: str, data: str) -> dict:
 				"reqd": cint(row.get("reqd")),
 				"help_text": row.get("help_text"),
 				"options": row.get("options"),
+				"grid_rows": row.get("grid_rows"),
 				"mapped_field": row.get("mapped_field"),
+				"has_other": cint(row.get("has_other")),
+				"shuffle_options": cint(row.get("shuffle_options")),
+				"min_value": row.get("min_value"),
+				"max_value": row.get("max_value"),
+				"max_length": cint(row.get("max_length")),
+				"validation_pattern": row.get("validation_pattern"),
+				"error_message": row.get("error_message"),
+				"scale_min": cint(row.get("scale_min")) or 1,
+				"scale_max": cint(row.get("scale_max")) or 5,
+				"min_label": row.get("min_label"),
+				"max_label": row.get("max_label"),
 				# Keep a frozen fieldname; otherwise let publish derive it.
 				"fieldname": (frozen.fieldname if (frozen and frozen.fieldname) else row.get("fieldname")),
 			})
@@ -350,6 +385,19 @@ def preview(slug: str) -> dict:
 
 
 @frappe.whitelist()
+def preview_form(slug: str) -> dict:
+	"""Respondent-view render spec for the builder's live preview - works on Drafts too.
+	Auth-only (Forms Managers); guests never reach unpublished forms."""
+	_guard()
+	from forms.api import public_render_spec
+
+	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
+	if not name:
+		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	return public_render_spec(frappe.get_doc("FF Form", name))
+
+
+@frappe.whitelist()
 def target_doctype_fields(doctype: str) -> list[dict]:
 	"""Plain mappable fields on a target DocType (Linked mode)."""
 	_guard()
@@ -366,6 +414,15 @@ def target_doctype_fields(doctype: str) -> list[dict]:
 
 # ---- Responses -------------------------------------------------------------
 
+def _safe_ident(name: str) -> str:
+	"""Guard a table/column name before it is interpolated into a backtick-quoted raw SQL identifier.
+	DocType names and frozen fieldnames are system-derived (scrubbed to snake_case at publish), but we
+	validate defensively so a malformed name can never break out of the backtick quoting."""
+	if not name or not re.fullmatch(r"[A-Za-z0-9_ ]+", name):
+		frappe.throw("Invalid identifier.")
+	return name
+
+
 def _published_collection(slug: str):
 	form = frappe.get_doc("FF Form", frappe.db.get_value("FF Form", {"slug": slug}, "name"))
 	if form.storage_mode != "Collection" or not form.doctype_name:
@@ -378,7 +435,7 @@ def responses_summary(slug: str) -> dict:
 	"""Live stat cards + per-choice distributions + rating breakdown."""
 	_guard()
 	form = _published_collection(slug)
-	dt = form.doctype_name
+	dt = _safe_ident(form.doctype_name)
 	total = frappe.db.count(dt)
 
 	confirmed = 0
@@ -388,7 +445,7 @@ def responses_summary(slug: str) -> dict:
 	charts = []
 	rating = None
 	for f in form.fields:
-		fn = resolve_fieldname(f)
+		fn = _safe_ident(resolve_fieldname(f))
 		if f.field_type in ("single_choice", "dropdown"):
 			rows = frappe.db.sql(
 				f"SELECT `{fn}` AS label, COUNT(*) AS n FROM `tab{dt}` "
@@ -397,13 +454,38 @@ def responses_summary(slug: str) -> dict:
 			)
 			charts.append({"label": f.label, "fieldname": fn, "type": "choice", "data": rows})
 		elif f.field_type == "checkboxes":
-			child = frappe.get_meta(dt).get_field(fn).options
+			child = _safe_ident(frappe.get_meta(dt).get_field(fn).options)
 			rows = frappe.db.sql(
 				f"SELECT `value` AS label, COUNT(*) AS n FROM `tab{child}` "
 				f"WHERE parenttype=%s GROUP BY `value` ORDER BY n DESC",
 				(dt,), as_dict=True,
 			)
 			charts.append({"label": f.label, "fieldname": fn, "type": "choice", "data": rows})
+		elif f.field_type == "linear_scale":
+			rows = frappe.db.sql(
+				f"SELECT `{fn}` AS label, COUNT(*) AS n FROM `tab{dt}` "
+				f"WHERE `{fn}` IS NOT NULL GROUP BY `{fn}` ORDER BY `{fn}`",
+				as_dict=True,
+			)
+			for r in rows:
+				r["label"] = str(r["label"])
+			charts.append({"label": f.label, "fieldname": fn, "type": "choice", "data": rows})
+		elif f.field_type in ("mc_grid", "checkbox_grid"):
+			child = _safe_ident(frappe.get_meta(dt).get_field(fn).options)
+			rows = frappe.db.sql(
+				f"SELECT `row` AS grid_row, `value` AS label, COUNT(*) AS n FROM `tab{child}` "
+				f"WHERE parenttype=%s GROUP BY `row`, `value`",
+				(dt,), as_dict=True,
+			)
+			# One mini-chart per grid row, preserving the builder's row order.
+			by_row = {}
+			for r in rows:
+				by_row.setdefault(r["grid_row"], []).append({"label": r["label"], "n": r["n"]})
+			for grid_row in [x.strip() for x in (f.grid_rows or "").splitlines() if x.strip()]:
+				data = sorted(by_row.get(grid_row, []), key=lambda d: d["n"], reverse=True)
+				if data:
+					charts.append({"label": f"{f.label} — {grid_row}", "fieldname": f"{fn}__{grid_row}",
+						"type": "choice", "data": data})
 		elif f.field_type == "rating" and rating is None:
 			# Rating stored as fraction of 5; bucket into 1..5 stars.
 			buckets = {i: 0 for i in range(1, 6)}
@@ -474,11 +556,18 @@ def get_submission(slug: str, name: str) -> dict:
 		fn = resolve_fieldname(f)
 		if f.field_type == "checkboxes":
 			multi[f.label] = [r.value for r in (doc.get(fn) or [])]
+		elif f.field_type in ("mc_grid", "checkbox_grid"):
+			multi[f.label] = [f"{r.row}: {r.value}" for r in (doc.get(fn) or [])]
 		else:
 			val = doc.get(fn)
 			if f.field_type == "rating" and val:
 				val = f"{round(flt(val) * 5)} / 5"
 			fields.append({"label": f.label, "fieldname": fn, "value": val})
+
+	email = doc.get("respondent_email")
+	if email:
+		fields.insert(0, {"label": "Email", "fieldname": "respondent_email", "value": email})
+
 	return {
 		"name": doc.name,
 		"doctype": form.doctype_name,
@@ -507,7 +596,11 @@ def export_csv(slug: str) -> str:
 
 	form = _published_collection(slug)
 	dt = form.doctype_name
-	cols = [resolve_fieldname(f) for f in form.fields if f.field_type != "checkboxes"]
+	# Table-backed answers (checkboxes, grids) have no flat cell; they're omitted from the CSV.
+	cols = [resolve_fieldname(f) for f in form.fields
+		if f.field_type not in ("checkboxes", "mc_grid", "checkbox_grid")]
+	if frappe.get_meta(dt).get_field("respondent_email"):
+		cols = ["respondent_email"] + cols
 	headers = ["name"] + cols + ["workflow_state", "creation"]
 	rows = frappe.get_all(dt, fields=[h for h in headers if frappe.get_meta(dt).get_field(h) or h in ("name", "creation")],
 		order_by="creation desc")

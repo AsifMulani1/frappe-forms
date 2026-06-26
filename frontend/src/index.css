@@ -320,6 +320,37 @@ body {
   align-items: center;
   gap: 9px;
 }
+/* grid (matrix) preview/editor in the builder */
+.grid-prev {
+  border-collapse: collapse;
+}
+.grid-prev th,
+.grid-prev td {
+  padding: 6px 8px;
+  vertical-align: middle;
+}
+.grid-prev thead th {
+  font-weight: 500;
+}
+
+/* compact inline field-config input (builder minimal mode) */
+.cfg-input {
+  height: 32px;
+  border: 1px solid var(--outline-gray-2);
+  border-radius: 8px;
+  background: var(--surface-white);
+  padding: 0 10px;
+  color: var(--ink-gray-8);
+  font-size: 13px;
+}
+.cfg-input::placeholder {
+  color: var(--ink-gray-4);
+}
+.cfg-input:focus {
+  outline: none;
+  border-color: var(--outline-gray-3);
+  box-shadow: 0 0 0 2px var(--surface-gray-2);
+}
 
 /* ---- developer panel (code surface) ---- */
 .dev-panel {
@@ -448,6 +479,22 @@ textarea.r-input {
   justify-content: center;
 }
 .r-choice.sel .r-cb {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+/* grid (matrix) question - respondent */
+.r-grid {
+  border-collapse: collapse;
+  width: 100%;
+}
+.r-grid button.r-radio,
+.r-grid button.r-cb {
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.r-grid button.r-cb.grid-cb-on {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;

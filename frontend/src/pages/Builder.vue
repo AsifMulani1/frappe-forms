@@ -1,5 +1,5 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Badge, Button, Dropdown, Tooltip, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
@@ -9,7 +9,7 @@ import Canvas from '../components/builder/Canvas.vue'
 import Inspector from '../components/builder/Inspector.vue'
 import FormSettingsDialog from '../components/builder/FormSettingsDialog.vue'
 import DevPanel from '../components/builder/DevPanel.vue'
-import { FT, hasOptions } from '../fieldTypes'
+import { FT, hasOptions, isGrid } from '../fieldTypes'
 import { prefs, toggleDevMode } from '../data/prefs'
 
 const props = defineProps({ slug: String })
@@ -23,6 +23,7 @@ const loaded = ref(false)
 const saveState = ref('idle') // idle | saving | saved
 let saveTimer = null
 let savedTimer = null
+let pending = false // unsaved edits are queued behind the debounce
 let tmpSeq = 0
 
 async function load() {
@@ -33,33 +34,89 @@ load()
 
 const selectedField = computed(() => form.fields.find((f) => f.name === selectedId.value) || null)
 
+// The full-document payload. Shared by the debounced save and the unload beacon.
+function savePayload() {
+  return {
+    title: form.title, description: form.description, accent: form.accent,
+    storage_mode: form.storage_mode, target_doctype: form.target_doctype,
+    login_required: form.login_required, allow_multiple: form.allow_multiple,
+    collect_email: form.collect_email, thank_you_message: form.thank_you_message,
+    redirect_url: form.redirect_url, cover_image: form.cover_image, category: form.category,
+    is_template: form.is_template, shuffle_questions: form.shuffle_questions,
+    show_progress: form.show_progress, email_receipt: form.email_receipt, allow_edit: form.allow_edit,
+    apply_doc_perms: form.apply_doc_perms, show_my_submissions: form.show_my_submissions,
+    allow_delete: form.allow_delete, fields: form.fields,
+  }
+}
+
+// Debounce edits into one save once typing pauses. The "Saving…" indicator is NOT flipped here —
+// it only shows when a request actually goes out (see doSave), so it no longer flickers per keystroke.
 function scheduleSave() {
   clearTimeout(saveTimer)
-  saveState.value = 'saving'
-  saveTimer = setTimeout(doSave, 600)
+  pending = true
+  saveTimer = setTimeout(doSave, 1000)
+}
+
+// Commit queued edits immediately — used on blur and before navigation so a field commits as soon
+// as you leave it, instead of waiting out the debounce. A no-op when nothing is pending.
+function flushSave() {
+  if (pending) return doSave()
 }
 
 async function doSave() {
-  if (!loaded.value) return
+  clearTimeout(saveTimer)
+  if (!loaded.value || !pending) return
+  pending = false
   saveState.value = 'saving'
+  // Snapshot the rows we're persisting (by reference, in send order) so we can map the
+  // server-assigned names back onto them without clobbering edits made during the round-trip.
+  const sent = form.fields.slice()
   const data = await call('forms.admin.save_form', {
     name: form.name,
-    data: JSON.stringify({
-      title: form.title, description: form.description, accent: form.accent,
-      storage_mode: form.storage_mode, target_doctype: form.target_doctype,
-      login_required: form.login_required, allow_multiple: form.allow_multiple,
-      collect_email: form.collect_email, thank_you_message: form.thank_you_message,
-      redirect_url: form.redirect_url, cover_image: form.cover_image, category: form.category,
-      is_template: form.is_template, fields: form.fields,
-    }),
+    data: JSON.stringify(savePayload()),
   })
-  const keep = selectedField.value?.name
-  Object.assign(form, data)
-  if (keep && !form.fields.find((f) => f.name === keep)) selectedId.value = null
+  // Reconcile only server-owned identity in place. We never reassign form.fields or the meta
+  // text fields, so the inputs the user is typing in are not torn down and re-rendered.
+  form.name = data.name
+  form.slug = data.slug
+  form.status = data.status
+  form.doctype_name = data.doctype_name
+  data.fields.forEach((row, i) => {
+    const local = sent[i]
+    if (!local) return
+    if (local.name !== row.name) {
+      if (selectedId.value === local.name) selectedId.value = row.name
+      local.name = row.name // tmp-N → persisted row name
+    }
+    local.fieldname = row.fieldname // frozen on publish; echoed back otherwise
+  })
+  // A fresh edit during the round-trip re-armed the timer; don't stomp its "Saving…" state.
+  if (pending) return
   saveState.value = 'saved'
   clearTimeout(savedTimer)
   savedTimer = setTimeout(() => { if (saveState.value === 'saved') saveState.value = 'idle' }, 2000)
 }
+
+// Last-ditch save when the tab is hidden/closed before the debounce fires. sendBeacon survives
+// unload (a normal fetch would be cancelled); Frappe accepts the CSRF token as a form field.
+function saveBeacon() {
+  if (!pending || !loaded.value || !form.name) return
+  const fd = new FormData()
+  fd.append('name', form.name)
+  fd.append('data', JSON.stringify(savePayload()))
+  if (window.csrf_token && window.csrf_token !== '{{ csrf_token }}') fd.append('csrf_token', window.csrf_token)
+  navigator.sendBeacon('/api/method/forms.admin.save_form', fd)
+  pending = false
+}
+
+function onVisibility() { if (document.visibilityState === 'hidden') saveBeacon() }
+window.addEventListener('pagehide', saveBeacon)
+document.addEventListener('visibilitychange', onVisibility)
+onBeforeUnmount(() => {
+  flushSave() // leaving the builder within the SPA: commit before the component is torn down
+  window.removeEventListener('pagehide', saveBeacon)
+  document.removeEventListener('visibilitychange', onVisibility)
+})
 
 function updateMeta(patch) { Object.assign(form, patch); scheduleSave() }
 function updateField(name, patch) {
@@ -71,8 +128,12 @@ function addField(typeId, index) {
   const t = FT[typeId]
   const f = {
     name: `tmp-${++tmpSeq}`, label: `Untitled ${t.label.toLowerCase()}`, field_type: typeId,
-    reqd: 0, help_text: '', options: hasOptions(typeId) ? 'Option 1\nOption 2\nOption 3' : '',
+    reqd: 0, help_text: '',
+    options: isGrid(typeId) ? 'Column 1\nColumn 2\nColumn 3' : hasOptions(typeId) ? 'Option 1\nOption 2\nOption 3' : '',
+    grid_rows: isGrid(typeId) ? 'Row 1\nRow 2' : '',
     mapped_field: '', fieldname: '',
+    has_other: 0, shuffle_options: 0, min_value: '', max_value: '', max_length: 0,
+    validation_pattern: '', error_message: '', scale_min: 1, scale_max: 5, min_label: '', max_label: '',
   }
   // index given (insert-between) → place there; otherwise append.
   if (index == null || index >= form.fields.length) form.fields.push(f)
@@ -125,7 +186,7 @@ function publish() {
       ? `Submissions will be saved as ${form.target_doctype} records. Field names freeze now.`
       : 'Your form goes live and anyone with the link can respond. Question types lock once it’s published, so add the fields you need first.',
     onConfirm: async ({ hideDialog }) => {
-      await doSave()
+      await flushSave()
       try {
         const res = await call('forms.admin.publish_form', { name: form.name })
         Object.assign(form, { status: 'Published', doctype_name: res.doctype_name })
@@ -139,7 +200,11 @@ function publish() {
   })
 }
 
-function preview() { window.open(`/forms/f/${form.slug}`, '_blank') }
+function preview() {
+  // Flush the latest edits, then open the respondent view in read-only preview mode (works on Drafts).
+  flushSave()
+  window.open(`/forms/f/${form.slug}?preview=1`, '_blank')
+}
 function copyLink() {
   navigator.clipboard?.writeText(`${location.origin}/forms/f/${form.slug}`)
   toast.success('Link copied')
@@ -178,8 +243,7 @@ function deleteForm() {
   })
 }
 const menu = computed(() => [
-  // Form settings folds in here (no standing gear icon); hidden in dev mode where the inspector covers it.
-  ...(!prefs.devMode ? [{ label: 'Form settings', icon: 'settings', onClick: () => { settingsOpen.value = true } }] : []),
+  // Form settings has its own standing gear in the header (left of preview); not duplicated here.
   { label: 'Duplicate', icon: 'copy', onClick: duplicate },
   { label: 'Share', icon: 'user-plus', onClick: () => openShare() },
   // quick copy stays available for published forms (Share dialog has it too)
@@ -197,7 +261,7 @@ function openShare() { shareOpen.value = true }
 </script>
 
 <template>
-  <div v-if="loaded" class="flex flex-col h-full w-full" :data-accent="form.accent">
+  <div v-if="loaded" class="flex flex-col h-full w-full" :data-accent="form.accent" @focusout="flushSave">
     <div class="h-[48px] border-b border-outline-gray-1 bg-surface-white flex items-center px-3.5 shrink-0 relative">
       <!-- left: back + title + a quiet status dot -->
       <div class="flex items-center gap-2.5 min-w-0">
@@ -218,12 +282,16 @@ function openShare() { shareOpen.value = true }
         <span class="seg-btn" @click="router.push(`/${form.slug}/responses`)">Responses</span>
       </div>
 
-      <!-- right: autosave state, preview, overflow, single primary action -->
+      <!-- right: autosave state, settings, preview, overflow, single primary action -->
       <div class="flex items-center gap-1.5 ml-auto">
         <span class="text-[11px] text-ink-gray-4 flex items-center gap-1 mr-1 w-[52px] justify-end">
           <template v-if="saveState === 'saving'"><Icon name="loader" :size="12" class="animate-spin" />Saving</template>
           <template v-else-if="saveState === 'saved'"><Icon name="check" :size="12" class="text-ink-green-600" />Saved</template>
         </span>
+        <!-- Form settings: standing gear (hidden in dev mode, where the inspector covers the same settings). -->
+        <Tooltip v-if="!prefs.devMode" text="Form settings">
+          <Button variant="ghost" theme="gray" @click="settingsOpen = true"><Icon name="settings" :size="16" /></Button>
+        </Tooltip>
         <Tooltip text="Preview">
           <Button variant="ghost" theme="gray" @click="preview"><Icon name="eye" :size="16" /></Button>
         </Tooltip>
