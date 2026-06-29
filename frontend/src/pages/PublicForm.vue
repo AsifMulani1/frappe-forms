@@ -615,7 +615,6 @@ async function submit() {
           <p v-else class="text-base text-ink-gray-6 mt-2 max-w-[420px] mx-auto">
             {{ form.thank_you_message || 'Thanks! Your response has been recorded.' }}
           </p>
-          <p class="text-xs text-ink-gray-5 mt-3">Saved as record <span class="font-mono text-ink-gray-7">{{ done }}</span></p>
 
           <div v-if="form.allow_edit && editUrl && !redirecting" class="mt-5 mx-auto max-w-[440px] text-left bg-surface-gray-1 rounded-lg p-3.5">
             <div class="flex items-center gap-1.5 text-sm text-ink-gray-7 mb-2"><Icon name="pencil" :size="13" />Edit your response later</div>
