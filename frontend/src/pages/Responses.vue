@@ -123,6 +123,11 @@ async function exportCsv() {
               <span class="text-[26px] font-medium text-ink-gray-9">{{ summary.data.rating ? summary.data.rating.average : '-' }}</span>
             </div>
           </div>
+          <div v-else class="border border-outline-gray-1 rounded-md bg-surface-white text-center py-12 px-4">
+            <Icon name="chart-no-axes-column" :size="22" class="text-ink-gray-4 mx-auto" />
+            <p class="text-sm text-ink-gray-7 mt-2">Couldn't load the summary.</p>
+            <Button class="mx-auto mt-3" variant="subtle" theme="gray" @click="summary.fetch()">Try again</Button>
+          </div>
 
           <!-- choice charts -->
           <div v-for="c in (summary.data?.charts || [])" :key="c.fieldname" class="border border-outline-gray-1 rounded-md bg-surface-white p-[18px]">

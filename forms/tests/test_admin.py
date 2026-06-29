@@ -83,3 +83,25 @@ class TestAdminAuth(IntegrationTestCase):
 		frappe.set_user(self.alice)
 		with self.assertRaises(frappe.ValidationError):
 			admin.save_form(form["name"], frappe.as_json({"redirect_url": "javascript:alert(1)"}))
+
+	def test_summary_skips_fields_not_yet_republished(self):
+		"""A choice/rating field edited into a published form but not re-published has no live
+		column; the summary must skip it instead of 500-ing and blanking the tab."""
+		form = self._alice_form()
+		frappe.set_user(self.alice)
+		base = {
+			"title": "Summary mismatch",
+			"storage_mode": "Collection",
+			"fields": [{"label": "Full Name", "field_type": "short_answer", "reqd": 1}],
+		}
+		admin.save_form(form["name"], frappe.as_json(base))
+		admin.publish_form(form["name"])
+		# Add an unpublished single_choice + checkboxes field -> their columns/tables don't exist yet.
+		base["fields"].append({"label": "Pick One", "field_type": "single_choice", "options": "A\nB"})
+		base["fields"].append({"label": "Pick Many", "field_type": "checkboxes", "options": "X\nY"})
+		admin.save_form(form["name"], frappe.as_json(base))
+		frappe.db.commit()
+		# Must not raise; the unmaterialised fields are simply absent from the charts.
+		result = admin.responses_summary(form["slug"])
+		self.assertEqual(result["charts"], [])
+		self.assertEqual(result["total"], 0)

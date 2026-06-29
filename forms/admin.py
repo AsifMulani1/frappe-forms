@@ -489,16 +489,22 @@ def responses_summary(slug: str) -> dict:
 	_guard()
 	form = _published_collection(slug)
 	dt = _safe_ident(form.doctype_name)
+	meta = frappe.get_meta(dt)
 	total = frappe.db.count(dt)
 
 	confirmed = 0
-	if frappe.get_meta(dt).get_field("workflow_state"):
+	if meta.get_field("workflow_state"):
 		confirmed = frappe.db.count(dt, {"workflow_state": "Confirmed"})
 
 	charts = []
 	rating = None
 	for f in form.fields:
 		fn = _safe_ident(resolve_fieldname(f))
+		mf = meta.get_field(fn)
+		# A field edited into the builder but not yet re-published has no live column/table
+		# in the generated DocType. Skip it so one unmaterialised field never blanks the summary.
+		if not mf:
+			continue
 		if f.field_type in ("single_choice", "dropdown"):
 			rows = frappe.db.sql(
 				f"SELECT `{fn}` AS label, COUNT(*) AS n FROM `tab{dt}` "
@@ -507,7 +513,9 @@ def responses_summary(slug: str) -> dict:
 			)
 			charts.append({"label": f.label, "fieldname": fn, "type": "choice", "data": rows})
 		elif f.field_type == "checkboxes":
-			child = _safe_ident(frappe.get_meta(dt).get_field(fn).options)
+			if not mf.options or not frappe.db.table_exists(mf.options):
+				continue
+			child = _safe_ident(mf.options)
 			rows = frappe.db.sql(
 				f"SELECT `value` AS label, COUNT(*) AS n FROM `tab{child}` "
 				f"WHERE parenttype=%s GROUP BY `value` ORDER BY n DESC",
@@ -524,7 +532,9 @@ def responses_summary(slug: str) -> dict:
 				r["label"] = str(r["label"])
 			charts.append({"label": f.label, "fieldname": fn, "type": "choice", "data": rows})
 		elif f.field_type in ("mc_grid", "checkbox_grid"):
-			child = _safe_ident(frappe.get_meta(dt).get_field(fn).options)
+			if not mf.options or not frappe.db.table_exists(mf.options):
+				continue
+			child = _safe_ident(mf.options)
 			rows = frappe.db.sql(
 				f"SELECT `row` AS grid_row, `value` AS label, COUNT(*) AS n FROM `tab{child}` "
 				f"WHERE parenttype=%s GROUP BY `row`, `value`",
