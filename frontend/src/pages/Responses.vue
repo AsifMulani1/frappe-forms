@@ -13,11 +13,19 @@ const openRec = ref(null)
 const drawer = ref(null)
 
 const meta = createResource({ url: 'forms.admin.get_form', params: { slug: props.slug }, auto: true })
-const canDesk = createResource({ url: 'forms.admin.can_open_in_desk', auto: true })
+const sheetLoading = ref(false)
 
-function openSheet() {
-  // Frappe's native spreadsheet-style Report View for this form's DocType.
-  window.open(`/app/${encodeURIComponent(meta.data.doctype_name)}/view/report`, '_blank')
+async function openSheet() {
+  // Export responses into Frappe Sheets (one persistent sheet per form) and open it.
+  sheetLoading.value = true
+  try {
+    const res = await call('forms.admin.open_in_sheet', { slug: props.slug })
+    window.open(res.url, '_blank')
+  } catch (e) {
+    toast.error(e.messages?.[0] || 'Could not open in Frappe Sheets')
+  } finally {
+    sheetLoading.value = false
+  }
 }
 const summary = createResource({ url: 'forms.admin.responses_summary', params: { slug: props.slug }, auto: true })
 const subs = createResource({ url: 'forms.admin.list_submissions', params: { slug: props.slug, limit: 100 }, auto: true })
@@ -89,8 +97,8 @@ async function exportCsv() {
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <Button v-if="canDesk.data" variant="outline" theme="gray" @click="openSheet">
-              <template #prefix><Icon name="table-2" :size="15" /></template>Open as spreadsheet
+            <Button variant="outline" theme="gray" :loading="sheetLoading" @click="openSheet">
+              <template #prefix><Icon name="table-2" :size="15" /></template>Open in Frappe Sheets
             </Button>
             <Button variant="outline" theme="gray" @click="exportCsv">
               <template #prefix><Icon name="download" :size="15" /></template>Export CSV

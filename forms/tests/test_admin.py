@@ -105,3 +105,67 @@ class TestAdminAuth(IntegrationTestCase):
 		result = admin.responses_summary(form["slug"])
 		self.assertEqual(result["charts"], [])
 		self.assertEqual(result["total"], 0)
+
+
+class TestOpenInSheet(IntegrationTestCase):
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		cls.alice = _manager("forms_alice@example.com")
+		frappe.db.commit()
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+
+	def _published_form_with_responses(self):
+		from forms.compile import resolve_fieldname
+
+		frappe.set_user(self.alice)
+		form = admin.create_form()
+		base = {
+			"title": "Sheet export",
+			"storage_mode": "Collection",
+			"collect_email": 1,
+			"fields": [{"label": "Full Name", "field_type": "short_answer", "reqd": 1}],
+		}
+		admin.save_form(form["name"], frappe.as_json(base))
+		admin.publish_form(form["name"])
+		doc = frappe.get_doc("FF Form", form["name"])
+		fn = resolve_fieldname(doc.fields[0])
+		for i in range(2):
+			frappe.get_doc({
+				"doctype": doc.doctype_name,
+				fn: f"Person {i}",
+				"respondent_email": f"person{i}@example.com",
+			}).insert(ignore_permissions=True)
+		frappe.db.commit()
+		return form
+
+	def test_open_in_sheet_creates_sheet_with_data(self):
+		from sheets.api import get_sheet
+
+		form = self._published_form_with_responses()
+		frappe.set_user(self.alice)
+		res = admin.open_in_sheet(form["slug"])
+		name = res["sheet_name"]
+		# A real Sheet was created and recorded on the form.
+		self.assertTrue(frappe.db.exists("Sheet", name))
+		self.assertEqual(res["url"], f"/sheets?id={name}")
+		self.assertEqual(frappe.db.get_value("FF Form", form["name"], "sheet_name"), name)
+		# The blob round-trips a header row + one row per response.
+		data = get_sheet(name)["sheets_data"]
+		if isinstance(data, str):
+			data = frappe.parse_json(data)
+		rows = data["sheet"]["sheets"]["Responses"]["rows"]
+		self.assertEqual(rows["0"][:2], ["Response ID", "Email"])
+		self.assertIn("Full Name", rows["0"])
+		self.assertEqual(len([k for k in rows if k != "0"]), 2)
+
+	def test_open_in_sheet_reuses_same_sheet(self):
+		form = self._published_form_with_responses()
+		frappe.set_user(self.alice)
+		first = admin.open_in_sheet(form["slug"])["sheet_name"]
+		second = admin.open_in_sheet(form["slug"])["sheet_name"]
+		# Persistent: refreshing exports into the same sheet, never a new one.
+		self.assertEqual(first, second)
+		self.assertEqual(frappe.db.count("Sheet", {"name": first}), 1)

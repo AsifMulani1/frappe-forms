@@ -653,6 +653,42 @@ def set_workflow_state(slug: str, name: str, state: str) -> dict:
 	return {"name": name, "workflow_state": state}
 
 
+def _submission_columns(form) -> list:
+	"""Ordered (key, label) columns shared by the CSV and Frappe Sheets exports.
+
+	`key` is the DocType fieldname (or name/creation/workflow_state); `label` is the
+	human-readable header. Table-backed answers (checkboxes, grids) have no flat cell,
+	so they're omitted from both exports.
+	"""
+	meta = frappe.get_meta(form.doctype_name)
+	cols = [("name", "Response ID")]
+	if meta.get_field("respondent_email"):
+		cols.append(("respondent_email", "Email"))
+	for f in form.fields:
+		if f.field_type in ("checkboxes", "mc_grid", "checkbox_grid"):
+			continue
+		fn = resolve_fieldname(f)
+		cols.append((fn, f.label or fn))
+	cols.append(("workflow_state", "Status"))
+	cols.append(("creation", "Submitted"))
+	return cols
+
+
+def _submission_rows(form, cols: list) -> list:
+	"""Fetch submission rows (newest first) for the given columns, enforcing the export cap."""
+	dt = form.doctype_name
+	meta = frappe.get_meta(dt)
+	# Hard cap: a synchronous export must never load an unbounded result set into memory.
+	# Forms past this size should export via a background job (future work).
+	cap = EXPORT_ROW_CAP
+	if frappe.db.count(dt) > cap:
+		frappe.throw(f"This form has more than {cap:,} responses — exporting that many at once isn't "
+			"supported yet. Filter or contact an administrator for a bulk export.")
+	keys = [k for k, _ in cols]
+	fetch = [k for k in keys if meta.get_field(k) or k in ("name", "creation")]
+	return frappe.get_all(dt, fields=fetch, order_by="creation desc", limit=cap)
+
+
 @frappe.whitelist()
 def export_csv(slug: str) -> str:
 	"""Return submissions as CSV text (frontend triggers a download)."""
@@ -661,21 +697,9 @@ def export_csv(slug: str) -> str:
 	import io
 
 	form = _published_collection(slug)
-	dt = form.doctype_name
-	# Table-backed answers (checkboxes, grids) have no flat cell; they're omitted from the CSV.
-	cols = [resolve_fieldname(f) for f in form.fields
-		if f.field_type not in ("checkboxes", "mc_grid", "checkbox_grid")]
-	if frappe.get_meta(dt).get_field("respondent_email"):
-		cols = ["respondent_email"] + cols
-	headers = ["name"] + cols + ["workflow_state", "creation"]
-	# Hard cap: a synchronous CSV must never load an unbounded result set into memory.
-	# Forms past this size should export via a background job (future work).
-	cap = EXPORT_ROW_CAP
-	if frappe.db.count(dt) > cap:
-		frappe.throw(f"This form has more than {cap:,} responses — exporting that many at once isn't "
-			"supported yet. Filter or contact an administrator for a bulk export.")
-	rows = frappe.get_all(dt, fields=[h for h in headers if frappe.get_meta(dt).get_field(h) or h in ("name", "creation")],
-		order_by="creation desc", limit=cap)
+	cols = _submission_columns(form)
+	rows = _submission_rows(form, cols)
+	headers = [k for k, _ in cols]
 	buf = io.StringIO()
 	writer = csv.DictWriter(buf, fieldnames=headers, extrasaction="ignore")
 	writer.writeheader()
@@ -684,14 +708,73 @@ def export_csv(slug: str) -> str:
 	return buf.getvalue()
 
 
+def _col_label(idx: int) -> str:
+	"""0-based column index -> spreadsheet column letter (0->A, 26->AA)."""
+	label = ""
+	idx += 1
+	while idx:
+		idx, rem = divmod(idx - 1, 26)
+		label = chr(65 + rem) + label
+	return label
+
+
+def _build_sheets_data(headers: list, data_rows: list) -> str:
+	"""Pack a header row + data rows into Frappe Sheets' `sheets_data` JSON string.
+
+	Schema verified empirically against frappe/sheets: the live blob is
+	{"sheet": {"v": 2, "current": <tab>, "sheets": {<tab>: {"rows": {<rowIdx>: [cells...]}}}},
+	 "formats": {<tab>: {"cells": {...}, "cols": {}, "rows": {}}}}
+	with 0-based string row keys and the header row bolded. save_sheet handles
+	compression; we pass the plain JSON string.
+	"""
+	tab = "Responses"
+	grid = {"0": [str(h) for h in headers]}
+	for i, row in enumerate(data_rows, start=1):
+		grid[str(i)] = ["" if v is None else str(v) for v in row]
+	bold_header = {f"{_col_label(c)}1": {"bold": True} for c in range(len(headers))}
+	payload = {
+		"sheet": {"v": 2, "current": tab, "sheets": {tab: {"rows": grid}}},
+		"formats": {tab: {"cells": bold_header, "cols": {}, "rows": {}}},
+	}
+	return frappe.as_json(payload)
+
+
+@frappe.whitelist()
+def open_in_sheet(slug: str) -> dict:
+	"""Export this form's responses into Frappe Sheets and return the URL to open.
+
+	One persistent sheet per form: the Sheet id is stored on FF Form.sheet_name.
+	First call creates the sheet (and shares it so any Forms Manager can refresh it);
+	later calls re-export the latest responses into the same sheet.
+	"""
+	_guard()
+	try:
+		from sheets.api import save_sheet
+	except ImportError:
+		frappe.throw("Frappe Sheets isn't installed on this site. Ask an administrator to install it.")
+
+	form = _published_collection(slug)
+	cols = _submission_columns(form)
+	rows = _submission_rows(form, cols)
+	keys = [k for k, _ in cols]
+	labels = [lbl for _, lbl in cols]
+	data = [[r.get(k) for k in keys] for r in rows]
+	blob = _build_sheets_data(labels, data)
+
+	title = f"{form.title} — Responses"
+	existing = form.sheet_name if form.sheet_name and frappe.db.exists("Sheet", form.sheet_name) else ""
+	res = save_sheet(title=title, sheets_data=blob, name=existing)
+	name = res["name"]
+	if name != form.sheet_name:
+		frappe.db.set_value("FF Form", form.name, "sheet_name", name, update_modified=False)
+		# New sheet: share with everyone so any Forms Manager (not just the creator)
+		# can open and refresh it. Data is already visible to them via Responses.
+		frappe.share.add("Sheet", name, user=None, write=1, share=0, everyone=1, notify=False)
+	return {"sheet_name": name, "url": f"/sheets?id={name}"}
+
+
 @frappe.whitelist()
 def has_app_permission():
 	"""Gate the /apps screen tile - Forms Managers and System Managers only."""
 	roles = set(frappe.get_roles())
 	return bool(roles & {"Forms Manager", "System Manager"})
-
-
-@frappe.whitelist()
-def can_open_in_desk() -> bool:
-	"""Only System Managers can open the native Desk spreadsheet (Report) view."""
-	return "System Manager" in frappe.get_roles()

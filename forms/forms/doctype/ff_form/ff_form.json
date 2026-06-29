@@ -13,6 +13,7 @@
   "cover_image",
   "category",
   "doctype_name",
+  "sheet_name",
   "archived",
   "is_template",
   "description_section",
@@ -89,6 +90,14 @@
    "fieldname": "doctype_name",
    "fieldtype": "Data",
    "label": "Generated DocType",
+   "read_only": 1
+  },
+  {
+   "description": "Frappe Sheet (id) this form's responses are exported into.",
+   "fieldname": "sheet_name",
+   "fieldtype": "Data",
+   "label": "Responses Sheet",
+   "no_copy": 1,
    "read_only": 1
   },
   {
