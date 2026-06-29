@@ -404,9 +404,7 @@ async function submit() {
           <div class="mb-7">
             <h1 class="text-2xl font-semibold text-ink-gray-9 tracking-tight">{{ form.title }}</h1>
             <p v-if="form.description" class="text-base text-ink-gray-6 mt-2">{{ form.description }}</p>
-            <div class="flex items-center gap-1.5 mt-3.5">
-              <span class="text-ink-red-500 text-sm">*</span><span class="text-sm text-ink-gray-5">Indicates a required question</span>
-            </div>
+            <p class="text-sm text-ink-gray-5 mt-3.5"><span class="text-ink-red-500">*</span> Indicates a required question</p>
           </div>
 
           <!-- the signed-in respondent's own past submissions -->
@@ -597,7 +595,7 @@ async function submit() {
             </div>
           </div>
 
-          <div class="flex items-center justify-between mt-4.5 px-1 mt-4">
+          <div class="flex flex-col gap-0.5 mt-4 px-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
             <span class="text-xs text-ink-gray-5 font-medium">Frappe Forms</span>
             <span class="text-xs text-ink-gray-4">Never submit passwords through Frappe Forms.</span>
           </div>
