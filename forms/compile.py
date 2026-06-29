@@ -324,6 +324,7 @@ def publish_collection(form):
 		if df.fieldname not in desired_names:
 			df.hidden = 1
 			df.read_only = 1
+			df.reqd = 0  # a removed field must not stay required, or every submit fails validation
 
 	dt.save(ignore_permissions=True)
 	frappe.clear_cache(doctype=doctype_name)

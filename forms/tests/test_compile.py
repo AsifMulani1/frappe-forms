@@ -182,7 +182,7 @@ class TestCompile(IntegrationTestCase):
 	def test_publish_is_additive(self):
 		form = make_form("additive-test", [
 			{"label": "Keep", "field_type": "short_answer"},
-			{"label": "Remove Me", "field_type": "short_answer"},
+			{"label": "Remove Me", "field_type": "short_answer", "reqd": 1},
 		], doctype_name="Additive Test Collection")
 		cc.publish(form.name)
 		form.reload()
@@ -201,3 +201,5 @@ class TestCompile(IntegrationTestCase):
 		self.assertIsNotNone(removed, "removed field must NOT be dropped")
 		self.assertTrue(removed.hidden)
 		self.assertTrue(removed.read_only)
+		# ...and no longer required, or a hidden field nothing can fill would block every submit.
+		self.assertFalse(removed.reqd, "removed field must not stay required")
