@@ -120,13 +120,13 @@ function scaleRange(field) {
 
 <template>
   <div class="flex-1 overflow-auto bg-surface-white">
-    <div ref="canvasEl" class="max-w-[720px] mx-auto px-6 pt-7 pb-20">
+    <div ref="canvasEl" class="max-w-[720px] mx-auto px-3 pt-7 pb-20 sm:px-6">
       <!-- form header card -->
       <div class="public-card overflow-hidden mb-4 cursor-pointer"
            :class="{ 'ring-1 ring-ink-gray-9': selectedId === null }"
            @click="emit('select', null)">
         <img v-if="form.cover_image" :src="form.cover_image" alt="Cover" class="w-full h-[160px] object-cover" />
-        <div class="px-6 py-5">
+        <div class="px-4 py-5 sm:px-6">
           <input class="edit-line text-[22px] font-medium text-ink-gray-9" :value="form.title"
                  placeholder="Form title" @click.stop
                  @input="emit('update-meta', { title: $event.target.value })" />

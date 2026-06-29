@@ -398,7 +398,7 @@ async function submit() {
         <div class="h-full transition-all" :style="{ width: `${done ? 100 : pct}%`, background: 'var(--accent)' }" />
       </div>
 
-      <div class="max-w-[600px] mx-auto px-5 pt-8 pb-16">
+      <div class="max-w-[600px] mx-auto px-3 pt-8 pb-16 sm:px-5">
         <template v-if="!done">
           <img v-if="form.cover_image" :src="form.cover_image" alt="" class="w-full h-[180px] object-cover rounded-xl mb-6" />
           <div class="mb-7">
@@ -410,7 +410,7 @@ async function submit() {
           </div>
 
           <!-- the signed-in respondent's own past submissions -->
-          <div v-if="mySubs.length" class="public-card p-5 mb-4">
+          <div v-if="mySubs.length" class="public-card p-4 mb-4 sm:p-5">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-sm font-medium text-ink-gray-9">Your responses</span>
               <span class="text-xs text-ink-gray-5">{{ mySubs.length }}</span>
@@ -428,7 +428,7 @@ async function submit() {
             </div>
           </div>
 
-          <div class="public-card p-7">
+          <div class="public-card p-5 sm:p-7">
             <!-- honeypot -->
             <input v-model="hp" type="text" tabindex="-1" autocomplete="off"
                    class="absolute opacity-0 pointer-events-none -z-10 h-0 w-0" aria-hidden="true" />
@@ -604,7 +604,7 @@ async function submit() {
         </template>
 
         <!-- success -->
-        <div v-else class="public-card text-center px-8 py-12">
+        <div v-else class="public-card text-center px-5 py-12 sm:px-8">
           <span class="w-[52px] h-[52px] rounded-[14px] bg-surface-green-2 flex items-center justify-center mx-auto text-green-600">
             <Icon name="check" :size="26" />
           </span>
