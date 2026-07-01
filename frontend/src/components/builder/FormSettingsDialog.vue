@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
-import { Dialog, FileUploader, FormControl, Switch } from 'frappe-ui'
+import { Dialog, DateTimePicker, FileUploader, FormControl, Switch } from 'frappe-ui'
 import Icon from '../Icon.vue'
 
 // Form-level settings, opened from the builder's gear icon. Per-field settings live inline on
@@ -22,7 +22,8 @@ const showAdvanced = ref(false)
 watch(open, (isOpen) => {
   if (!isOpen || !props.form) return
   const f = props.form
-  showAdvanced.value = !!(f.shuffle_questions || f.email_receipt || f.allow_edit
+  showAdvanced.value = !!(f.opens_on || f.closes_on || f.response_limit
+    || f.shuffle_questions || f.email_receipt || f.allow_edit
     || f.show_my_submissions || f.allow_delete || f.is_template)
 })
 
@@ -41,7 +42,25 @@ function onCover(file) {
           <span class="text-xs text-ink-gray-5">Who can respond</span>
           <Switch :modelValue="!!form.collect_email" label="Collect email addresses" @update:modelValue="set({ collect_email: $event ? 1 : 0 })" />
           <Switch :modelValue="!form.allow_multiple" label="One response per user" @update:modelValue="set({ allow_multiple: $event ? 0 : 1 })" />
+          <span v-if="!form.allow_multiple" class="text-[11.5px] text-ink-gray-5 -mt-2">Enforced by signed-in user, or by collected email for guests.</span>
           <Switch :modelValue="!!form.login_required" label="Login required" @update:modelValue="set({ login_required: $event ? 1 : 0 })" />
+        </section>
+
+        <!-- Notifications -->
+        <section class="flex flex-col gap-3.5">
+          <span class="text-xs text-ink-gray-5">Notifications</span>
+          <Switch :modelValue="!!form.notify_on_response" label="Email me on new response" @update:modelValue="set({ notify_on_response: $event ? 1 : 0 })" />
+          <FormControl v-if="form.notify_on_response" type="text" label="Notification email"
+            placeholder="Defaults to the form owner"
+            :modelValue="form.notify_email" @update:modelValue="set({ notify_email: $event })" />
+        </section>
+
+        <!-- Quiz -->
+        <section class="flex flex-col gap-3.5">
+          <span class="text-xs text-ink-gray-5">Quiz</span>
+          <Switch :modelValue="!!form.is_quiz" label="Make this a quiz" @update:modelValue="set({ is_quiz: $event ? 1 : 0 })" />
+          <span v-if="form.is_quiz" class="text-[11.5px] text-ink-gray-5 -mt-2">Set points and correct answers per question on each field.</span>
+          <Switch v-if="form.is_quiz" :modelValue="!!form.show_score" label="Show score after submit" @update:modelValue="set({ show_score: $event ? 1 : 0 })" />
         </section>
 
         <!-- Respondent experience -->
@@ -84,6 +103,20 @@ function onCover(file) {
             Advanced
           </button>
           <template v-if="showAdvanced">
+            <span class="text-xs text-ink-gray-5">Scheduling &amp; limits</span>
+            <div class="flex flex-col gap-1.5">
+              <span class="text-xs text-ink-gray-6">Opens on</span>
+              <DateTimePicker :modelValue="form.opens_on" placeholder="Open immediately" @update:modelValue="set({ opens_on: $event })" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <span class="text-xs text-ink-gray-6">Closes on</span>
+              <DateTimePicker :modelValue="form.closes_on" placeholder="No closing date" @update:modelValue="set({ closes_on: $event })" />
+            </div>
+            <FormControl type="number" label="Response limit"
+              description="Stop accepting after this many responses. 0 = unlimited (Collection forms)."
+              :modelValue="form.response_limit || ''" @update:modelValue="set({ response_limit: +$event || 0 })" />
+
+            <span class="text-xs text-ink-gray-5 pt-1.5">More options</span>
             <Switch :modelValue="!!form.shuffle_questions" label="Shuffle question order" @update:modelValue="set({ shuffle_questions: $event ? 1 : 0 })" />
             <Switch :modelValue="!!form.email_receipt" label="Email respondents a receipt" @update:modelValue="set({ email_receipt: $event ? 1 : 0 })" />
             <Switch :modelValue="!!form.allow_edit" label="Allow editing responses" @update:modelValue="set({ allow_edit: $event ? 1 : 0 })" />

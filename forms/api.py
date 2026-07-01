@@ -28,6 +28,7 @@ def _published_form(slug: str):
 def _field_spec(f) -> dict:
 	return {
 		"fieldname": resolve_fieldname(f),
+		"field_key": f.field_key,
 		"label": f.label,
 		"field_type": f.field_type,
 		"help_text": f.help_text,
@@ -46,7 +47,70 @@ def _field_spec(f) -> dict:
 		"scale_max": cint(f.scale_max) or 5,
 		"min_label": f.min_label,
 		"max_label": f.max_label,
+		# Conditional logic: this field shows only when the controlling field (by field_key) matches.
+		"condition_field": f.condition_field,
+		"condition_operator": f.condition_operator or "equals",
+		"condition_value": f.condition_value,
+		# Quiz grading (correct_answer is server-only — never exposed to respondents).
+		"points": cint(f.points),
+		"correct_answer": [c.strip() for c in (f.correct_answer or "").splitlines() if c.strip()],
 	}
+
+
+def _public_field(f) -> dict:
+	"""A field for the respondent view — the full spec minus quiz answer keys."""
+	spec = _field_spec(f)
+	spec.pop("correct_answer", None)  # respondents must never receive the answer key
+	return spec
+
+
+def _answer_values(actual) -> list[str]:
+	"""Flatten any answer (scalar / checkbox list / grid dict) to a list of comparable strings."""
+	if actual is None or actual == "":
+		return []
+	if isinstance(actual, list):
+		return [str(x) for x in actual]
+	if isinstance(actual, dict):
+		out = []
+		for v in actual.values():
+			out.extend(v if isinstance(v, list) else [v])
+		return [str(x) for x in out]
+	return [str(actual)]
+
+
+def _condition_met(operator: str, expected, actual) -> bool:
+	"""Evaluate one visibility/skip condition. Shared shape with the SPA's evaluator."""
+	expected = (expected or "").strip()
+	values = _answer_values(actual)
+	present = expected in values
+	if operator == "not_equals":
+		return not present
+	if operator == "contains":
+		return any(expected in v for v in values) if expected else bool(values)
+	return present  # "equals" (default)
+
+
+def _visible_specs(form, specs: dict, data: dict) -> dict:
+	"""Drop fields whose conditional-logic rule isn't satisfied by the submitted answers.
+
+	Hidden fields are skipped entirely — not validated (a hidden required field can't block a
+	submit) and not stored. Evaluated against raw answers, keyed by the controlling field_key.
+	"""
+	key_to_fn = {
+		f.field_key: (f.fieldname or resolve_fieldname(f))
+		for f in form.fields
+		if f.field_type not in LAYOUT_TYPES and f.field_key
+	}
+	visible = {}
+	for fieldname, spec in specs.items():
+		controlling = spec.get("condition_field")
+		if controlling:
+			ctrl_fn = key_to_fn.get(controlling)
+			actual = data.get(ctrl_fn) if ctrl_fn else None
+			if not _condition_met(spec.get("condition_operator"), spec.get("condition_value"), actual):
+				continue
+		visible[fieldname] = spec
+	return visible
 
 
 def _to_number(value):
@@ -97,9 +161,13 @@ def inject_csrf_token(context):
 		context["boot"]["csrf_token"] = frappe.sessions.get_csrf_token()
 
 
-def public_render_spec(form) -> dict:
+def public_render_spec(form, check_state: bool = True) -> dict:
 	"""The respondent-view render spec for a form. Shared by the public (published-only)
-	endpoint and the builder's preview, which renders Drafts too."""
+	endpoint and the builder's preview, which renders Drafts too.
+
+	check_state=False skips the open/close/limit gate so the builder preview always renders.
+	"""
+	accepting, closed_reason = _accepting_status(form) if check_state else (True, None)
 	return {
 		"slug": form.slug,
 		"title": form.title,
@@ -117,8 +185,76 @@ def public_render_spec(form) -> dict:
 		"allow_edit": cint(form.allow_edit),
 		"show_my_submissions": cint(form.show_my_submissions),
 		"allow_delete": cint(form.allow_delete),
-		"fields": [_field_spec(f) for f in form.fields],
+		"is_quiz": cint(form.is_quiz),
+		"show_score": cint(form.show_score),
+		"accepting": accepting,
+		"closed_reason": closed_reason,
+		"fields": [_public_field(f) for f in form.fields],
 	}
+
+
+def _accepting_status(form) -> tuple[bool, str | None]:
+	"""Whether the form is currently taking responses: open window + under any response limit."""
+	now = frappe.utils.now_datetime()
+	if form.opens_on and now < frappe.utils.get_datetime(form.opens_on):
+		return False, "This form isn’t open for responses yet."
+	if form.closes_on and now > frappe.utils.get_datetime(form.closes_on):
+		return False, "This form is no longer accepting responses."
+	limit = cint(form.response_limit)
+	if limit and form.storage_mode == "Collection" and form.doctype_name and frappe.db.exists("DocType", form.doctype_name):
+		if frappe.db.count(form.doctype_name) >= limit:
+			return False, "This form has reached its response limit."
+	return True, None
+
+
+def _block_if_duplicate(form, respondent_email: str | None):
+	"""Enforce 'one response per user' (when allow_multiple is off) for Collection forms.
+
+	Identifies a repeat by record owner (signed-in) or captured email (guest). Pure anonymous
+	guests with no email can't be deduped server-side — that case relies on login/email.
+	"""
+	if cint(form.allow_multiple) or form.storage_mode != "Collection":
+		return
+	dt = form.doctype_name
+	if not dt or not frappe.db.exists("DocType", dt):
+		return
+	user = frappe.session.user
+	if user and user != "Guest":
+		if frappe.db.exists(dt, {"owner": user}):
+			frappe.throw("You’ve already responded to this form.")
+	elif respondent_email:
+		if frappe.db.exists(dt, {"respondent_email": respondent_email}):
+			frappe.throw("A response has already been submitted with this email address.")
+
+
+def _is_correct(spec: dict, value, correct: list[str]) -> bool:
+	"""Did this answer match the question's correct answer(s)? (quiz grading)"""
+	if value is None or value == "":
+		return False
+	ft = spec["field_type"]
+	if ft == "checkboxes":
+		return {str(v) for v in (value or [])} == set(correct)
+	if ft == "yes_no":
+		picked = "Yes" if value in (1, "1", "Yes", "yes", "true", True) else "No"
+		return picked in correct or str(value) in correct
+	if ft == "rating":
+		# Stored as a fraction of 5; compare on the star count.
+		return str(round(flt(value) * 5)) in correct
+	return str(value).strip() in correct
+
+
+def _grade(specs: dict, clean: dict) -> tuple[float, float]:
+	"""Total awarded points and max possible, over visible graded fields."""
+	score = max_score = 0.0
+	for fieldname, spec in specs.items():
+		correct = spec.get("correct_answer") or []
+		pts = cint(spec.get("points"))
+		if not correct or not pts:
+			continue
+		max_score += pts
+		if _is_correct(spec, clean.get(fieldname), correct):
+			score += pts
+	return score, max_score
 
 
 @frappe.whitelist(allow_guest=True)
@@ -240,7 +376,16 @@ def _coerce_and_validate(spec: dict, raw):
 			if not ok:
 				frappe.throw(spec.get("error_message") or f"'{label}' is not in the expected format.")
 		return raw
-	# date
+	if ft == "date":
+		# Frappe's Date column is forgiving on insert; validate the shape here so a bad date is
+		# rejected with a clear message instead of being silently coerced or erroring in the ORM.
+		try:
+			parsed = frappe.utils.getdate(str(raw).strip())
+		except Exception:
+			parsed = None
+		if not parsed:
+			frappe.throw(f"'{label}' must be a valid date.")
+		return str(parsed)
 	return raw
 
 
@@ -334,17 +479,11 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 	if not isinstance(data, dict):
 		frappe.throw("Invalid submission payload.")
 
-	# Display-only fields (section headers) carry no data and are never validated/stored.
-	specs = {
-		(f.fieldname or resolve_fieldname(f)): _field_spec(f)
-		for f in form.fields
-		if f.field_type not in LAYOUT_TYPES
-	}
-
-	# Validate + coerce every defined field (by fieldname).
-	clean = {}
-	for fieldname, spec in specs.items():
-		clean[fieldname] = _coerce_and_validate(spec, data.get(fieldname))
+	# Editing an existing response (valid token / record) is distinct from a new submission:
+	# the open/close window, response limit, and one-per-user rule gate new responses only.
+	allow_edit = cint(form.allow_edit)
+	is_edit = bool((record and allow_edit and form.storage_mode == "Linked")
+		or (token and allow_edit and form.storage_mode != "Linked"))
 
 	# Capture the respondent's email when the form collects it (typed, or the logged-in user's).
 	respondent_email = None
@@ -355,23 +494,58 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 		if not validate_email_address(respondent_email):
 			frappe.throw("Please provide a valid email address.")
 
+	if not is_edit:
+		accepting, closed_reason = _accepting_status(form)
+		if not accepting:
+			frappe.throw(closed_reason or "This form is not accepting responses.")
+		_block_if_duplicate(form, respondent_email)
+
+	# Display-only fields (section headers) carry no data; fields hidden by conditional logic are
+	# dropped here so a hidden required field can't block the submit and hidden answers aren't stored.
+	specs = {
+		(f.fieldname or resolve_fieldname(f)): _field_spec(f)
+		for f in form.fields
+		if f.field_type not in LAYOUT_TYPES
+	}
+	specs = _visible_specs(form, specs, data)
+
+	# Validate + coerce every visible field (by fieldname).
+	clean = {}
+	for fieldname, spec in specs.items():
+		clean[fieldname] = _coerce_and_validate(spec, data.get(fieldname))
+
+	score = max_score = None
+	if cint(form.is_quiz):
+		score, max_score = _grade(specs, clean)
+
 	result = {}
 	if form.storage_mode == "Linked":
 		# Edit an existing target record (login + write permission), else insert a new one.
-		if record and cint(form.allow_edit):
+		if record and allow_edit:
 			result["name"] = _update_linked(form, clean, specs, record)
 		else:
 			result["name"] = _insert_linked(form, clean, specs)
-	elif token and cint(form.allow_edit):
+	elif token and allow_edit:
 		result["name"] = _update_collection(form, clean, specs, token, respondent_email)
 	else:
-		new_token = frappe.generate_hash(length=24) if cint(form.allow_edit) else None
+		new_token = frappe.generate_hash(length=24) if allow_edit else None
 		result["name"] = _insert_collection(form, clean, specs, new_token, respondent_email)
 		if new_token:
 			result["token"] = new_token
 
+	if score is not None:
+		# Persist the graded score on the Collection record (system columns); always return it.
+		if form.storage_mode == "Collection" and frappe.get_meta(form.doctype_name).get_field("score"):
+			frappe.db.set_value(form.doctype_name, result["name"],
+				{"score": score, "max_score": max_score}, update_modified=False)
+		result["score"] = score
+		result["max_score"] = max_score
+		if cint(form.show_score):
+			result["show_score"] = 1
+
 	frappe.db.commit()
 	_maybe_send_receipt(form, clean, specs, respondent_email)
+	_maybe_notify_admin(form, clean, specs, result["name"], respondent_email)
 	return result
 
 
@@ -474,15 +648,9 @@ def _maybe_send_receipt(form, clean: dict, specs: dict, captured_email: str | No
 	recipient = _receipt_recipient(specs, clean, captured_email)
 	if not recipient:
 		return
-	rows = "".join(
-		f"<tr><td style='padding:4px 12px 4px 0;color:#6b7280'>{frappe.utils.escape_html(spec['label'])}</td>"
-		f"<td style='padding:4px 0'>{frappe.utils.escape_html(_format_answer(clean[fn]))}</td></tr>"
-		for fn, spec in specs.items()
-		if clean.get(fn) is not None
-	)
 	message = (
 		f"<p>Thanks for your response to <b>{frappe.utils.escape_html(form.title)}</b>. "
-		f"Here's a copy for your records:</p><table>{rows}</table>"
+		f"Here's a copy for your records:</p><table>{_answers_table(clean, specs)}</table>"
 	)
 	try:
 		# Enqueued (not now=True): a slow/down mail server must never block or fail the submission.
@@ -490,6 +658,38 @@ def _maybe_send_receipt(form, clean: dict, specs: dict, captured_email: str | No
 			message=message)
 	except Exception:
 		frappe.log_error(title="Forms receipt email failed")
+
+
+def _answers_table(clean: dict, specs: dict) -> str:
+	"""An HTML table of label -> answer for the response, used in receipt and notification emails."""
+	return "".join(
+		f"<tr><td style='padding:4px 12px 4px 0;color:#6b7280'>{frappe.utils.escape_html(spec['label'])}</td>"
+		f"<td style='padding:4px 0'>{frappe.utils.escape_html(_format_answer(clean[fn]))}</td></tr>"
+		for fn, spec in specs.items()
+		if clean.get(fn) is not None
+	)
+
+
+def _maybe_notify_admin(form, clean: dict, specs: dict, record_name: str, respondent_email: str | None):
+	"""Email the form owner (or a configured address) when a new response arrives."""
+	if not cint(form.notify_on_response):
+		return
+	recipient = (form.notify_email or "").strip() or frappe.db.get_value("User", form.owner, "email") or form.owner
+	if not recipient or recipient == "Guest":
+		return
+	site = frappe.utils.get_url()
+	link = f"{site}/forms/{form.slug}/responses"
+	who = f" from {frappe.utils.escape_html(respondent_email)}" if respondent_email else ""
+	message = (
+		f"<p>New response{who} to <b>{frappe.utils.escape_html(form.title)}</b> "
+		f"(<code>{frappe.utils.escape_html(record_name)}</code>).</p>"
+		f"<table>{_answers_table(clean, specs)}</table>"
+		f"<p><a href='{link}'>View all responses</a></p>"
+	)
+	try:
+		frappe.sendmail(recipients=[recipient], subject=f"New response: {form.title}", message=message)
+	except Exception:
+		frappe.log_error(title="Forms response notification failed")
 
 
 @frappe.whitelist(allow_guest=True)

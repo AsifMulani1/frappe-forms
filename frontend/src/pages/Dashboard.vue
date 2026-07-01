@@ -216,7 +216,7 @@ function openShare(f) {
       <div class="px-5 pt-10 pb-12 max-w-[960px] mx-auto">
         <div class="flex items-start justify-between gap-4 mb-7">
           <div class="flex flex-col gap-1.5 min-w-0">
-            <h1 class="text-3xl text-ink-gray-9">{{ meta.title }}</h1>
+            <h1 class="text-3xl font-semibold text-ink-gray-9">{{ meta.title }}</h1>
             <p class="text-sm text-ink-gray-5">{{ meta.sub }}</p>
           </div>
           <Button variant="solid" theme="gray" class="shrink-0 mt-1" @click="newForm">

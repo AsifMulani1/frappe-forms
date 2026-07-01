@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "frappe-ui": "^0.1.95",
+    "frappe-ui": "^0.1.278",
     "lucide-vue-next": "^0.460.0",
     "qrcode": "^1.5.4",
     "vue": "^3.4.0",

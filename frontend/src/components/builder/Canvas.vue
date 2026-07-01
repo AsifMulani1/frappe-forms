@@ -1,8 +1,8 @@
 <script setup>
-import { Button, Dropdown, FormControl, Switch } from 'frappe-ui'
+import { Button, FormControl, Switch } from 'frappe-ui'
 import Icon from '../Icon.vue'
 import FieldTypePicker from './FieldTypePicker.vue'
-import { FT, FIELD_TYPES, isLayout, canHaveOther, canShuffleOptions, isText, isGrid } from '../../fieldTypes'
+import { FT, isLayout, canHaveOther, canShuffleOptions, isText, isGrid, canBeConditionSource, isGradable, hasOptions } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
 
 import { ref } from 'vue'
@@ -14,16 +14,6 @@ const props = defineProps({
 const emit = defineEmits([
   'select', 'update-meta', 'update-field', 'delete', 'duplicate', 'move', 'reorder', 'add',
 ])
-
-// Inline type picker for the selected card (direct manipulation; replaces the dev inspector
-// in the minimal experience). Current type is check-marked.
-function typeOptions(field) {
-  return FIELD_TYPES.map((t) => ({
-    label: t.label,
-    icon: t.id === field.field_type ? 'check' : '',
-    onClick: () => emit('update-field', field.name, { field_type: t.id }),
-  }))
-}
 
 // Pointer-based reorder. The grabbed card follows the pointer via transform; neighbours slide
 // out of the way (CSS-transitioned) to reveal the drop slot. Drop thresholds use the cards'
@@ -116,6 +106,43 @@ function scaleRange(field) {
   if (hi <= lo || hi - lo > 14) { lo = 1; hi = 5 }
   return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
 }
+
+// Conditional logic: fields ABOVE this one that can drive its visibility (saved, choice-like).
+function priorSources(field) {
+  const out = []
+  for (const f of props.form.fields) {
+    if (f.name === field.name) break
+    if (canBeConditionSource(f.field_type) && f.field_key) out.push(f)
+  }
+  return out
+}
+function controllingField(field) {
+  return props.form.fields.find((f) => f.field_key === field.condition_field)
+}
+function conditionValueOptions(field) {
+  const ctrl = controllingField(field)
+  if (!ctrl) return []
+  if (ctrl.field_type === 'yes_no') return ['Yes', 'No']
+  return (ctrl.options || '').split('\n').filter(Boolean)
+}
+
+// Quiz: mark correct option(s); correct_answer is stored newline-joined.
+function correctSet(field) {
+  return (field.correct_answer || '').split('\n').filter(Boolean)
+}
+function toggleCorrect(field, opt) {
+  const set = new Set(correctSet(field))
+  if (set.has(opt)) set.delete(opt)
+  else set.add(opt)
+  emit('update-field', field.name, { correct_answer: [...set].join('\n') })
+}
+function isCorrect(field, opt) {
+  return correctSet(field).includes(opt)
+}
+function quizOptions(field) {
+  if (field.field_type === 'yes_no') return ['Yes', 'No']
+  return (field.options || '').split('\n').filter(Boolean)
+}
 </script>
 
 <template>
@@ -157,7 +184,7 @@ function scaleRange(field) {
             <Icon name="grip-vertical" :size="15" />
           </span>
           <input class="edit-line min-w-0 max-w-full" style="field-sizing:content;width:auto"
-                 :class="isLayout(f.field_type) ? 'text-[18px] font-semibold text-ink-gray-9' : 'text-[16px] text-ink-gray-9'"
+                 :class="isLayout(f.field_type) ? 'text-[18px] font-semibold text-ink-gray-9' : 'text-[15px] font-medium text-ink-gray-9'"
                  :value="f.label" :placeholder="isLayout(f.field_type) ? 'Section title' : 'Question label'"
                  @click.stop @input="emit('update-field', f.name, { label: $event.target.value })" />
           <span v-if="f.reqd && !isLayout(f.field_type)" class="text-base text-ink-red-500 shrink-0 -ml-0.5" title="Required">*</span>
@@ -276,12 +303,16 @@ function scaleRange(field) {
         <div v-if="!prefs.devMode && selectedId === f.name"
              class="flex flex-col gap-3 mt-4 pt-3 border-t border-outline-gray-1" @click.stop>
           <div class="flex items-center gap-3">
-            <Dropdown :options="typeOptions(f)">
-              <button class="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-outline-gray-2 text-sm text-ink-gray-7 hover:bg-surface-gray-2 transition-colors">
-                <Icon :name="FT[f.field_type].icon" :size="14" />{{ FT[f.field_type].label }}
-                <Icon name="chevron-down" :size="13" class="text-ink-gray-4" />
-              </button>
-            </Dropdown>
+            <FieldTypePicker title="Change type" :selected="f.field_type"
+                             @pick="emit('update-field', f.name, { field_type: $event })">
+              <template #trigger="{ toggle }">
+                <button @click="toggle"
+                        class="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-outline-gray-2 text-sm text-ink-gray-7 hover:bg-surface-gray-2 transition-colors">
+                  <Icon :name="FT[f.field_type].icon" :size="14" />{{ FT[f.field_type].label }}
+                  <Icon name="chevron-down" :size="13" class="text-ink-gray-4" />
+                </button>
+              </template>
+            </FieldTypePicker>
             <div v-if="!isLayout(f.field_type)" class="ml-auto flex items-center gap-2">
               <span class="text-sm text-ink-gray-7">Required</span>
               <Switch :modelValue="!!f.reqd" @update:modelValue="emit('update-field', f.name, { reqd: $event ? 1 : 0 })" />
@@ -323,6 +354,56 @@ function scaleRange(field) {
           <div v-if="canShuffleOptions(f.field_type)" class="flex flex-wrap items-center gap-x-6 gap-y-2">
             <label class="flex items-center gap-2"><Switch :modelValue="!!f.shuffle_options" @update:modelValue="emit('update-field', f.name, { shuffle_options: $event ? 1 : 0 })" /><span class="text-sm text-ink-gray-7">Shuffle options</span></label>
             <label v-if="canHaveOther(f.field_type)" class="flex items-center gap-2"><Switch :modelValue="!!f.has_other" @update:modelValue="emit('update-field', f.name, { has_other: $event ? 1 : 0 })" /><span class="text-sm text-ink-gray-7">Add “Other”</span></label>
+          </div>
+
+          <!-- conditional logic: show this field only when a prior field matches -->
+          <div v-if="!isLayout(f.field_type) && priorSources(f).length" class="flex flex-col gap-2 pt-1">
+            <div class="flex items-center gap-2 text-[12px] text-ink-gray-6"><Icon name="git-branch" :size="13" />Conditional logic</div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select class="cfg-input min-w-[150px]" :value="f.condition_field || ''"
+                      @change="emit('update-field', f.name, { condition_field: $event.target.value })">
+                <option value="">Always show</option>
+                <option v-for="s in priorSources(f)" :key="s.field_key" :value="s.field_key">Show if “{{ s.label }}”</option>
+              </select>
+              <template v-if="f.condition_field">
+                <select class="cfg-input w-[120px]" :value="f.condition_operator || 'equals'"
+                        @change="emit('update-field', f.name, { condition_operator: $event.target.value })">
+                  <option value="equals">equals</option>
+                  <option value="not_equals">is not</option>
+                  <option value="contains">contains</option>
+                </select>
+                <select v-if="conditionValueOptions(f).length" class="cfg-input min-w-[120px]" :value="f.condition_value || ''"
+                        @change="emit('update-field', f.name, { condition_value: $event.target.value })">
+                  <option value="">Choose a value</option>
+                  <option v-for="v in conditionValueOptions(f)" :key="v" :value="v">{{ v }}</option>
+                </select>
+                <input v-else class="cfg-input min-w-[120px]" :value="f.condition_value" placeholder="Value"
+                       @input="emit('update-field', f.name, { condition_value: $event.target.value })" />
+              </template>
+            </div>
+          </div>
+
+          <!-- quiz: points + correct answer(s) -->
+          <div v-if="form.is_quiz && isGradable(f.field_type)" class="flex flex-col gap-2 pt-1 border-t border-outline-gray-1">
+            <div class="flex items-center gap-2">
+              <Icon name="award" :size="13" class="text-ink-gray-6" />
+              <span class="text-sm text-ink-gray-7">Points</span>
+              <input class="cfg-input w-[80px]" :value="f.points || ''" placeholder="0" inputmode="numeric"
+                     @input="emit('update-field', f.name, { points: +$event.target.value || 0 })" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <span class="text-[12px] text-ink-gray-6">Correct answer</span>
+              <div v-if="hasOptions(f.field_type) || f.field_type === 'yes_no'" class="flex flex-wrap gap-1.5">
+                <button v-for="o in quizOptions(f)" :key="o" type="button"
+                        class="px-2.5 h-7 rounded-md border text-sm transition-colors"
+                        :class="isCorrect(f, o) ? 'border-ink-green-500 bg-surface-green-2 text-ink-green-700' : 'border-outline-gray-2 text-ink-gray-7 hover:bg-surface-gray-2'"
+                        @click="toggleCorrect(f, o)">
+                  <Icon v-if="isCorrect(f, o)" name="check" :size="12" class="inline -mt-0.5 mr-1" />{{ o }}
+                </button>
+              </div>
+              <input v-else class="cfg-input max-w-[280px]" :value="f.correct_answer" placeholder="Expected answer"
+                     @input="emit('update-field', f.name, { correct_answer: $event.target.value })" />
+            </div>
           </div>
         </div>
         </div>

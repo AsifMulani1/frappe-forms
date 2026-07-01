@@ -8,7 +8,7 @@ import { prefs } from '../data/prefs'
 
 const props = defineProps({ slug: String })
 const router = useRouter()
-const sub = ref('summary')
+const sub = ref('individual')
 const openRec = ref(null)
 const drawer = ref(null)
 
@@ -87,14 +87,18 @@ async function exportCsv() {
       </div>
     </div>
 
-    <div class="flex-1 overflow-auto relative bg-surface-gray-1">
+    <div class="flex-1 overflow-auto relative" :class="sub === 'individual' ? 'bg-surface-white' : 'bg-surface-gray-1'">
       <div class="px-5 pt-6 pb-14 max-w-[940px] mx-auto">
         <div class="flex items-center justify-between mb-4">
-          <div class="flex gap-4">
-            <span class="text-sm cursor-pointer pb-1 border-b-2" :class="sub === 'summary' ? 'text-ink-gray-9 border-ink-gray-9 font-medium' : 'text-ink-gray-6 border-transparent'" @click="sub = 'summary'">Summary</span>
-            <span class="text-sm cursor-pointer pb-1 border-b-2" :class="sub === 'individual' ? 'text-ink-gray-9 border-ink-gray-9 font-medium' : 'text-ink-gray-6 border-transparent'" @click="sub = 'individual'">
+          <div class="flex gap-5 border-b border-outline-gray-1">
+            <button class="relative pb-2.5 text-base cursor-pointer transition-colors duration-300 ease-in-out" :class="sub === 'individual' ? 'text-ink-gray-9' : 'text-ink-gray-5 hover:text-ink-gray-9'" @click="sub = 'individual'">
               Individual <span class="text-ink-gray-4">{{ subs.data?.total || 0 }}</span>
-            </span>
+              <span v-if="sub === 'individual'" class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-surface-gray-7" />
+            </button>
+            <button class="relative pb-2.5 text-base cursor-pointer transition-colors duration-300 ease-in-out" :class="sub === 'summary' ? 'text-ink-gray-9' : 'text-ink-gray-5 hover:text-ink-gray-9'" @click="sub = 'summary'">
+              Summary
+              <span v-if="sub === 'summary'" class="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-surface-gray-7" />
+            </button>
           </div>
           <div class="flex items-center gap-2">
             <Button variant="outline" theme="gray" :loading="sheetLoading" @click="openSheet">
@@ -171,17 +175,15 @@ async function exportCsv() {
 
         <!-- INDIVIDUAL -->
         <div v-else class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-white">
-          <div class="flex items-center gap-3 px-3 py-2 border-b border-outline-gray-1 bg-surface-gray-1 text-xs text-ink-gray-5">
-            <span class="w-[150px] font-mono">name</span>
+          <div class="flex items-center gap-3 px-4 h-9 border-b border-outline-gray-1 bg-surface-gray-1 text-xs text-ink-gray-5">
             <span class="flex-1">Respondent</span>
             <span v-if="subs.data?.has_workflow" class="w-[100px]">State</span>
             <span class="w-16 text-right">Created</span>
           </div>
           <div v-if="!subs.data?.rows?.length" class="text-sm text-ink-gray-5 text-center py-10">No responses yet.</div>
           <div v-for="r in (subs.data?.rows || [])" :key="r.name"
-               class="flex items-center gap-3 px-3 py-2 cursor-pointer border-t border-outline-gray-1 first:border-t-0 hover:bg-surface-gray-1"
+               class="flex items-center gap-3 px-4 h-[52px] cursor-pointer border-t border-outline-gray-1 first:border-t-0 hover:bg-surface-gray-1 transition-colors"
                @click="openRecord(r.name)">
-            <span class="w-[150px] font-mono text-[11.5px] text-ink-gray-5 truncate">{{ r.name }}</span>
             <div class="flex items-center gap-2.5 flex-1 min-w-0">
               <Avatar :label="r[subs.data.display_fields[0]?.fieldname] || r.name" size="sm" />
               <div class="flex flex-col min-w-0">

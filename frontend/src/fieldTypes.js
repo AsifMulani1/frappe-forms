@@ -41,6 +41,32 @@ export const isGrid = (t) => GRID_TYPES.includes(t)
 // Display-only blocks (no answer, no required toggle).
 export const LAYOUT_TYPES = ['section_header']
 export const isLayout = (t) => LAYOUT_TYPES.includes(t)
+// Types that can drive a conditional-logic rule (their answer is a clean, comparable value).
+export const CONDITION_SOURCE_TYPES = ['single_choice', 'dropdown', 'checkboxes', 'yes_no']
+export const canBeConditionSource = (t) => CONDITION_SOURCE_TYPES.includes(t)
+// Types that support quiz grading (an answer can be matched against a correct value).
+export const GRADABLE_TYPES = ['short_answer', 'single_choice', 'dropdown', 'checkboxes', 'yes_no', 'number', 'date', 'linear_scale']
+export const isGradable = (t) => GRADABLE_TYPES.includes(t)
+
+// Evaluate one conditional-logic rule client-side — must mirror api._condition_met.
+export function answerValues(actual) {
+  if (actual === null || actual === undefined || actual === '') return []
+  if (Array.isArray(actual)) return actual.map(String)
+  if (typeof actual === 'object') {
+    const out = []
+    for (const v of Object.values(actual)) out.push(...(Array.isArray(v) ? v : [v]))
+    return out.map(String)
+  }
+  return [String(actual)]
+}
+export function conditionMet(operator, expected, actual) {
+  const exp = (expected || '').trim()
+  const values = answerValues(actual)
+  const present = values.includes(exp)
+  if (operator === 'not_equals') return !present
+  if (operator === 'contains') return exp ? values.some((v) => v.includes(exp)) : values.length > 0
+  return present // equals (default)
+}
 
 export function toFieldname(label, fallback = 'field') {
   const base = (label || '')

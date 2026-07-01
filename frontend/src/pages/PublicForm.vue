@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Button, DatePicker, FormControl, TimePicker, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
+import { conditionMet } from '../fieldTypes'
 import Icon from '../components/Icon.vue'
 import SignaturePad from '../components/SignaturePad.vue'
 
@@ -21,6 +22,7 @@ const answers = reactive({})
 const errors = reactive({})
 const submitting = ref(false)
 const done = ref(null)
+const submitResult = ref(null) // { score, max_score, show_score } after a quiz submission
 const redirecting = ref(false)
 const hp = ref('') // honeypot
 const uploading = reactive({})
@@ -70,13 +72,50 @@ function buildPresentation() {
   currentPage.value = 0
 }
 
+// Conditional logic: a field referencing another (by field_key) shows only when the rule holds.
+const keyToFieldname = computed(() => {
+  const m = {}
+  for (const f of form.value?.fields || []) {
+    if (f.field_type !== 'section_header' && f.field_key) m[f.field_key] = f.fieldname
+  }
+  return m
+})
+function isVisible(f) {
+  if (!f.condition_field) return true
+  const ctrlFn = keyToFieldname.value[f.condition_field]
+  return conditionMet(f.condition_operator, f.condition_value, ctrlFn ? answers[ctrlFn] : undefined)
+}
+function visibleFields(fields) {
+  return (fields || []).filter(isVisible)
+}
+
+// Read query params as answer prefills (?fieldname=value, checkboxes comma-separated; ?email=…).
+function applyPrefill() {
+  const reserved = new Set(['preview', 'edit', 'name'])
+  const byFieldname = {}
+  for (const f of form.value.fields || []) if (f.fieldname) byFieldname[f.fieldname] = f
+  for (const [k, v] of Object.entries(route.query)) {
+    if (reserved.has(k)) continue
+    const f = byFieldname[k]
+    if (f) {
+      if (f.field_type === 'checkboxes') answers[f.fieldname] = String(v).split(',').map((s) => s.trim()).filter(Boolean)
+      else answers[f.fieldname] = String(v)
+    } else if (k === 'email' && form.value.collect_email) {
+      respondentEmail.value = String(v)
+    }
+  }
+}
+
+// Form closed (outside its open/close window, or at its response limit) — render a notice, not the form.
+const closed = computed(() => !isPreview.value && form.value && form.value.accepting === false)
+
 const page = computed(() => pages.value[currentPage.value] || { header: null, fields: [] })
 const multiPage = computed(() => pages.value.length > 1)
 const isLastPage = computed(() => currentPage.value >= pages.value.length - 1)
 
 function validatePage(idx) {
   let ok = true
-  for (const f of pages.value[idx]?.fields || []) {
+  for (const f of visibleFields(pages.value[idx]?.fields)) {
     const res = validateField(f)
     if (res) { errors[f.fieldname] = res; ok = false }
   }
@@ -109,6 +148,7 @@ async function load() {
     const endpoint = isPreview.value ? 'forms.admin.preview_form' : 'forms.api.get_public_form'
     form.value = await call(endpoint, { slug: props.slug })
     buildPresentation()
+    applyPrefill()
     if (form.value.collect_email && form.value.user_email) respondentEmail.value = form.value.user_email
     // Preview is read-only: no edit-link loading, no view tracking, no submissions list.
     if (!isPreview.value) {
@@ -210,8 +250,8 @@ function copyEditLink() {
   toast.success('Edit link copied')
 }
 
-// Section headers carry no answer - exclude them from the progress count.
-const questions = computed(() => (form.value?.fields || []).filter((f) => f.field_type !== 'section_header'))
+// Section headers carry no answer, and fields hidden by conditional logic don't count.
+const questions = computed(() => (form.value?.fields || []).filter((f) => f.field_type !== 'section_header' && isVisible(f)))
 const total = computed(() => questions.value.length)
 const answered = computed(() =>
   questions.value.filter((f) => {
@@ -235,6 +275,7 @@ function resetForm() {
   }
   respondentEmail.value = form.value?.user_email || ''
   emailError.value = false
+  submitResult.value = null
 }
 // Email is collected on the first page; validate it there.
 function emailOk() {
@@ -355,6 +396,7 @@ async function submit() {
       record: recordName.value || undefined,
       email: form.value.collect_email ? (respondentEmail.value || '').trim() : undefined,
     })
+    submitResult.value = res
     if (res.token) editToken.value = res.token
     // Linked + editable + signed in: expose a return-to-edit link for the new record.
     if (form.value.storage_mode === 'Linked' && form.value.allow_edit && form.value.user_email) {
@@ -388,8 +430,15 @@ async function submit() {
 
     <div v-if="notFound" class="flex flex-col items-center justify-center h-screen text-center px-6">
       <Icon name="file-question" :size="34" class="text-ink-gray-4" />
-      <h1 class="text-xl text-ink-gray-9 mt-3">Form not available</h1>
+      <h1 class="text-xl font-semibold text-ink-gray-9 mt-3">Form not available</h1>
       <p class="text-sm text-ink-gray-5 mt-1">This form doesn’t exist or isn’t published yet.</p>
+    </div>
+
+    <!-- form closed: outside its open/close window, or at its response limit -->
+    <div v-else-if="closed" class="flex flex-col items-center justify-center h-screen text-center px-6">
+      <Icon name="lock" :size="34" class="text-ink-gray-4" />
+      <h1 class="text-xl font-semibold text-ink-gray-9 mt-3">{{ form.title }}</h1>
+      <p class="text-sm text-ink-gray-5 mt-1 max-w-[420px]">{{ form.closed_reason || 'This form is not accepting responses.' }}</p>
     </div>
 
     <template v-else-if="form">
@@ -450,7 +499,7 @@ async function submit() {
               <p v-if="page.header.help_text" class="text-sm text-ink-gray-5 mt-1">{{ page.header.help_text }}</p>
             </div>
 
-            <template v-for="f in page.fields" :key="f.fieldname">
+            <template v-for="f in visibleFields(page.fields)" :key="f.fieldname">
             <div class="flex flex-col gap-2 mb-6">
               <div class="flex flex-col gap-0.5">
                 <span class="text-[15px] font-medium text-ink-gray-9">
@@ -607,6 +656,13 @@ async function submit() {
             <Icon name="check" :size="26" />
           </span>
           <h2 class="text-xl font-semibold text-ink-gray-9 mt-4">{{ editing ? 'Response updated' : 'Response received' }}</h2>
+
+          <!-- quiz score -->
+          <div v-if="submitResult && submitResult.show_score && submitResult.max_score" class="mt-4 mx-auto inline-flex flex-col items-center rounded-xl bg-surface-gray-1 px-6 py-4">
+            <span class="text-xs text-ink-gray-5 uppercase tracking-wide">Your score</span>
+            <span class="text-2xl font-semibold text-ink-gray-9 mt-1">{{ +submitResult.score.toFixed(2) }} / {{ +submitResult.max_score.toFixed(2) }}</span>
+          </div>
+
           <p v-if="redirecting" class="text-base text-ink-gray-6 mt-2 flex items-center justify-center gap-2">
             <Icon name="loader" :size="16" class="animate-spin" />Redirecting you now…
           </p>

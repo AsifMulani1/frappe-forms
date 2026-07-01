@@ -11,6 +11,14 @@ class FFForm(Document):
 		self.ensure_slug()
 		self.set_doctype_name()
 		self.validate_redirect_url()
+		self.ensure_field_keys()
+
+	def ensure_field_keys(self):
+		"""Give every field a stable key the moment it's saved, so conditional logic can reference
+		it across edits (labels and derived fieldnames change; field_key never does)."""
+		for f in self.fields:
+			if not f.field_key:
+				f.field_key = frappe.generate_hash(length=10)
 
 	def validate_redirect_url(self):
 		"""Only allow http(s) or site-relative redirects — never javascript:/data: schemes."""
@@ -20,8 +28,17 @@ class FFForm(Document):
 		self.redirect_url = url
 
 	def ensure_slug(self):
-		"""Auto-slugify from title (or the given slug), de-duping with a numeric suffix."""
-		base = slugify(self.slug) if self.slug else slugify(self.title)
+		"""While a form is a Draft its slug tracks the title, so renaming a form gives it a matching
+		URL and generated-DocType name (a form created as "Untitled form" and then titled
+		"DevCon 2026" becomes devcon-2026, not untitled-form-87). Once Published the slug is frozen —
+		public links must never break. The slug is server-derived only; the client can't set it."""
+		frozen = self.status == "Published"
+		before = self.get_doc_before_save()
+		title_changed = before is None or before.title != self.title
+		if not frozen and (title_changed or not self.slug):
+			base = slugify(self.title)
+		else:
+			base = slugify(self.slug) or slugify(self.title)
 		if not base:
 			base = "form"
 
@@ -32,8 +49,16 @@ class FFForm(Document):
 		self.slug = slug
 
 	def set_doctype_name(self):
-		"""Default the generated DocType name from the (unique) slug - Collection mode."""
-		if self.storage_mode == "Collection" and not self.doctype_name:
+		"""Generated DocType name (Collection mode) tracks the title-derived slug while Draft, then
+		freezes on publish so the name keeps pointing at the DocType that was actually created. An
+		explicitly-set name is preserved — only an auto-derived one follows the slug."""
+		if self.storage_mode != "Collection":
+			return
+		if self.status == "Published" and self.doctype_name:
+			return
+		before = self.get_doc_before_save()
+		auto = not self.doctype_name or (before is not None and self.doctype_name == title_case(before.slug))
+		if auto:
 			self.doctype_name = title_case(self.slug)
 
 	@frappe.whitelist()

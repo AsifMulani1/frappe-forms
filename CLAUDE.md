@@ -37,12 +37,21 @@ real Frappe DocTypes. It ships as a HEADLESS frappe-ui SPA - users never touch F
   description (Small Text), status (Select: Draft\nPublished, default Draft),
   storage_mode (Select: Collection\nLinked, default Collection),
   target_doctype (Link: DocType), doctype_name (Data, the generated DocType),
-  accent (Select: blue\ngreen\nviolet, default blue),
+  accent (Select: blue\ngreen\nviolet\nrose\namber\nteal, default blue),
   login_required (Check), allow_multiple (Check, default 1), collect_email (Check, default 1),
   fields (Table: FF Form Field).
+  Plus: cover_image, category, thank_you_message, redirect_url, shuffle_questions, show_progress,
+  email_receipt, allow_edit, show_my_submissions, allow_delete, apply_doc_perms, is_template,
+  notify_on_response + notify_email (admin notification), opens_on / closes_on / response_limit
+  (scheduling + cap), is_quiz + show_score (quiz mode).
 - "FF Form Field" (istable:1): label (Data), fieldname (Data, frozen at publish),
-  field_type (Select, the 10 types), reqd (Check), help_text (Small Text),
-  options (Small Text, newline-joined for choice types), mapped_field (Data, Linked mode).
+  field_key (Data, read-only stable id used by conditional logic - never changes),
+  field_type (Select, the types above), reqd (Check), help_text (Small Text),
+  options (Small Text, newline-joined for choice types / grid columns), grid_rows, mapped_field
+  (Linked mode), has_other, shuffle_options, min_value/max_value/max_length/validation_pattern/
+  error_message, scale_min/scale_max/min_label/max_label (linear scale),
+  condition_field/condition_operator/condition_value (conditional logic, references a field_key),
+  points + correct_answer (quiz grading; correct_answer is server-only, never sent to respondents).
 
 ## Field-type -> Frappe fieldtype map (authoritative)
   short_answer  -> Data
@@ -56,7 +65,16 @@ real Frappe DocTypes. It ships as a HEADLESS frappe-ui SPA - users never touch F
                                        that child DocType name)
   date          -> Date
   rating        -> Rating
+  linear_scale  -> Int             (scale_min..scale_max, optional min_label/max_label)
+  mc_grid       -> Table           (rows x columns -> child {row, value}, one value per row)
+  checkbox_grid -> Table           (rows x columns -> child {row, value}, many values per row)
   yes_no        -> Check
+  phone         -> Data            (regex-validated)
+  time          -> Time
+  address       -> Small Text
+  file_upload   -> Attach          (guest upload via upload_submission_file; private File)
+  signature     -> Signature       (base64 PNG data URL, size-capped)
+  section_header-> (display only, no column; doubles as page break in the respondent view)
   reqd -> reqd:1 ; help_text -> description ; frozen fieldname is authoritative.
 
 ## Publish rules
@@ -70,8 +88,21 @@ real Frappe DocTypes. It ships as a HEADLESS frappe-ui SPA - users never touch F
 
 ## Submission
 One `@frappe.whitelist(allow_guest=True)` endpoint, rate-limited (20/hr per slug),
-honeypot-checked, validates required + email/int/select formats server-side, inserts with
+honeypot-checked, validates required + email/int/select/date formats server-side, inserts with
 `ignore_permissions=True`, returns the new record name.
+- Gating (new responses only, not token/record edits): `_accepting_status` enforces the
+  opens_on/closes_on window + response_limit; `_block_if_duplicate` enforces one-response-per-user
+  when allow_multiple is off (by record owner if signed in, else by collected email).
+- Conditional logic: `_visible_specs` drops fields whose condition_field rule isn't met by the
+  submitted answers - hidden fields are neither validated (a hidden required field can't block a
+  submit) nor stored. Conditional fields are compiled reqd:0 (their requiredness is API-enforced
+  when visible). The SPA mirrors the same evaluator (`conditionMet` in fieldTypes.js).
+- Quiz: when is_quiz, `_grade` scores visible graded fields into the score/max_score system
+  columns and returns the score (shown to the respondent when show_score).
+- Pre-filled links: the respondent SPA reads `?<fieldname>=value` query params (checkboxes
+  comma-separated, `?email=` for the collected email) - client-side only.
+- Generated Collection DocTypes carry system columns: workflow_state, edit_token,
+  respondent_email, score, max_score (all backfilled additively on re-publish).
 
 ## Conventions
 snake_case fieldnames, server-side validation always, never trust client data. Write a

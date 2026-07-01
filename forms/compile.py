@@ -43,7 +43,7 @@ from frappe.model import default_fields as _DEFAULT_FIELDS  # noqa: E402
 
 RESERVED_FIELDNAMES = frozenset(_DEFAULT_FIELDS) | {
 	"parent", "parentfield", "parenttype", "idx",
-	"workflow_state", "edit_token", "respondent_email",
+	"workflow_state", "edit_token", "respondent_email", "score", "max_score",
 	"value", "row",  # child-table columns generated for checkboxes / grids
 }
 
@@ -157,7 +157,9 @@ def build_docfields(form) -> list[dict]:
 		elif f.field_type in GRID_TYPES:
 			df["options"] = _grid_doctype_name(form, candidate)
 
-		if f.reqd:
+		# A conditionally-shown field can't be a hard DocType-level mandatory: when its rule isn't
+		# met it's legitimately empty. Its "required when visible" rule is enforced in the submit API.
+		if f.reqd and not f.get("condition_field"):
 			df["reqd"] = 1
 		if f.help_text:
 			df["description"] = f.help_text
@@ -282,6 +284,9 @@ def publish_collection(form):
 			"fieldtype": "Data",
 			"options": "Email",
 		})
+		# Quiz score columns (populated on submit only when the form is a quiz).
+		for fn, lbl in (("score", "Score"), ("max_score", "Max Score")):
+			dt.append("fields", {"fieldname": fn, "label": lbl, "fieldtype": "Float", "read_only": 1})
 		for p in _permissions():
 			dt.append("permissions", p)
 		dt.insert(ignore_permissions=True)
@@ -316,8 +321,11 @@ def publish_collection(form):
 	if "respondent_email" not in existing:
 		dt.append("fields", {"fieldname": "respondent_email", "label": "Respondent Email",
 			"fieldtype": "Data", "options": "Email"})
+	for fn, lbl in (("score", "Score"), ("max_score", "Max Score")):
+		if fn not in existing:
+			dt.append("fields", {"fieldname": fn, "label": lbl, "fieldtype": "Float", "read_only": 1})
 
-	system_fields = {"workflow_state", "edit_token", "respondent_email"}
+	system_fields = {"workflow_state", "edit_token", "respondent_email", "score", "max_score"}
 	for df in dt.fields:
 		if df.fieldname in system_fields:
 			continue
@@ -361,6 +369,17 @@ def publish_linked(form):
 def publish(form_name: str):
 	"""Freeze names, dispatch by storage mode, set status Published."""
 	form = frappe.get_doc("FF Form", form_name)
+
+	# The title becomes the form's public slug and its generated DocType name, both permanent once
+	# published. Refuse to publish while it's still unnamed, so we never create an "Untitled Form N"
+	# DocType that's impossible to find on Desk.
+	title = (form.title or "").strip()
+	if not title or title.casefold() == "untitled form":
+		frappe.throw(
+			"Give your form a name before publishing — it becomes the form's link and its DocType name.",
+			title="Name your form",
+		)
+
 	freeze_fieldnames(form)
 	form.reload()
 

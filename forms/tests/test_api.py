@@ -343,3 +343,88 @@ class TestApi(IntegrationTestCase):
 		self.assertEqual(spec["shuffle_questions"], 1)
 		self.assertEqual(spec["show_progress"], 0)
 		self.assertEqual(spec["fields"][0]["shuffle_options"], 1)
+
+	def test_date_validation(self):
+		spec = {"field_type": "date", "label": "DOB", "reqd": 0, "options": []}
+		self.assertEqual(api._coerce_and_validate(spec, "2026-01-15"), "2026-01-15")
+		with self.assertRaises(frappe.ValidationError):
+			api._coerce_and_validate(spec, "not-a-date")
+
+	def test_conditional_logic_hides_and_shows(self):
+		published_form("api-cond", [
+			{"label": "Has pet", "field_type": "single_choice", "options": "Yes\nNo", "field_key": "haspet"},
+			{"label": "Pet name", "field_type": "short_answer", "reqd": 1, "field_key": "petname",
+				"condition_field": "haspet", "condition_operator": "equals", "condition_value": "Yes"},
+		], "Api Cond Rec")
+		frappe.db.delete("Api Cond Rec")
+		frappe.db.commit()
+		# Condition not met -> the required "Pet name" is hidden, so its absence can't block the submit.
+		res = api.submit("api-cond", json.dumps({"has_pet": "No"}))
+		self.assertFalse(frappe.get_doc("Api Cond Rec", res["name"]).pet_name)
+		# Condition met -> the field is now required.
+		with self.assertRaises(frappe.ValidationError):
+			api.submit("api-cond", json.dumps({"has_pet": "Yes"}))
+		# Condition met with a value -> stored.
+		res2 = api.submit("api-cond", json.dumps({"has_pet": "Yes", "pet_name": "Rex"}))
+		self.assertEqual(frappe.get_doc("Api Cond Rec", res2["name"]).pet_name, "Rex")
+
+	def test_quiz_grading_and_storage(self):
+		form = published_form("api-quiz", [
+			{"label": "2+2", "field_type": "single_choice", "options": "3\n4\n5", "points": 2, "correct_answer": "4"},
+			{"label": "Sky color", "field_type": "short_answer", "points": 1, "correct_answer": "blue"},
+		], "Api Quiz Rec")
+		frappe.db.set_value("FF Form", form.name, "is_quiz", 1)
+		frappe.db.commit()
+		frappe.db.delete("Api Quiz Rec")
+		frappe.db.commit()
+		res = api.submit("api-quiz", json.dumps({"2_2": "4", "sky_color": "blue"}))
+		self.assertEqual(res["score"], 3)
+		self.assertEqual(res["max_score"], 3)
+		self.assertEqual(frappe.get_doc("Api Quiz Rec", res["name"]).score, 3)
+		partial = api.submit("api-quiz", json.dumps({"2_2": "3", "sky_color": "blue"}))
+		self.assertEqual(partial["score"], 1)
+
+	def test_correct_answer_not_in_public_spec(self):
+		published_form("api-secret", [
+			{"label": "Q", "field_type": "single_choice", "options": "A\nB", "points": 1, "correct_answer": "A"},
+		], "Api Secret Rec")
+		spec = api.get_public_form("api-secret")
+		self.assertNotIn("correct_answer", spec["fields"][0])  # answer key must never reach respondents
+		self.assertIn("points", spec["fields"][0])
+
+	def test_response_limit_blocks(self):
+		form = published_form("api-limit", [{"label": "X", "field_type": "short_answer"}], "Api Limit Rec")
+		frappe.db.set_value("FF Form", form.name, "response_limit", 1)
+		frappe.db.commit()
+		frappe.db.delete("Api Limit Rec")
+		frappe.db.commit()
+		api.submit("api-limit", json.dumps({"x": "one"}))
+		with self.assertRaises(frappe.ValidationError):
+			api.submit("api-limit", json.dumps({"x": "two"}))
+
+	def test_closed_window_blocks(self):
+		form = published_form("api-closed", [{"label": "X", "field_type": "short_answer"}], "Api Closed Rec")
+		frappe.db.set_value("FF Form", form.name, "closes_on", frappe.utils.add_to_date(None, days=-1))
+		frappe.db.commit()
+		with self.assertRaises(frappe.ValidationError):
+			api.submit("api-closed", json.dumps({"x": "late"}))
+
+	def test_one_response_per_user(self):
+		form = published_form("api-once", [{"label": "X", "field_type": "short_answer"}], "Api Once Rec")
+		frappe.db.set_value("FF Form", form.name, "allow_multiple", 0)
+		frappe.db.commit()
+		frappe.db.delete("Api Once Rec")
+		frappe.db.commit()
+		api.submit("api-once", json.dumps({"x": "first"}))  # owner = Administrator
+		with self.assertRaises(frappe.ValidationError):
+			api.submit("api-once", json.dumps({"x": "second"}))
+
+	def test_admin_notification_sent(self):
+		form = published_form("api-notify", [{"label": "X", "field_type": "short_answer"}], "Api Notify Rec")
+		frappe.db.set_value("FF Form", form.name,
+			{"notify_on_response": 1, "notify_email": "owner@example.com"})
+		frappe.db.commit()
+		with patch("frappe.sendmail") as sendmail:
+			api.submit("api-notify", json.dumps({"x": "hi"}))
+		self.assertTrue(sendmail.called)
+		self.assertEqual(sendmail.call_args.kwargs.get("recipients"), ["owner@example.com"])

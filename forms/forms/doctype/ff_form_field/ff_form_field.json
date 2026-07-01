@@ -11,6 +11,7 @@
   "has_other",
   "column_break_1",
   "fieldname",
+  "field_key",
   "mapped_field",
   "shuffle_options",
   "section_break_1",
@@ -27,7 +28,14 @@
   "scale_min",
   "scale_max",
   "min_label",
-  "max_label"
+  "max_label",
+  "logic_section",
+  "condition_field",
+  "condition_operator",
+  "condition_value",
+  "quiz_field_section",
+  "points",
+  "correct_answer"
  ],
  "fields": [
   {
@@ -61,6 +69,13 @@
    "fieldname": "fieldname",
    "fieldtype": "Data",
    "label": "Fieldname"
+  },
+  {
+   "description": "Stable client-side identifier, used by conditional logic to reference this field across edits. Never changes.",
+   "fieldname": "field_key",
+   "fieldtype": "Data",
+   "label": "Field Key",
+   "read_only": 1
   },
   {
    "description": "Target docfield in Linked mode.",
@@ -165,6 +180,49 @@
    "fieldname": "max_label",
    "fieldtype": "Data",
    "label": "Max label"
+  },
+  {
+   "fieldname": "logic_section",
+   "fieldtype": "Section Break",
+   "label": "Conditional logic"
+  },
+  {
+   "description": "Field Key of the question this field's visibility depends on. Blank = always shown.",
+   "fieldname": "condition_field",
+   "fieldtype": "Data",
+   "label": "Show when field"
+  },
+  {
+   "default": "equals",
+   "depends_on": "condition_field",
+   "fieldname": "condition_operator",
+   "fieldtype": "Select",
+   "label": "Operator",
+   "options": "equals\nnot_equals\ncontains"
+  },
+  {
+   "depends_on": "condition_field",
+   "fieldname": "condition_value",
+   "fieldtype": "Data",
+   "label": "Value"
+  },
+  {
+   "fieldname": "quiz_field_section",
+   "fieldtype": "Section Break",
+   "label": "Quiz"
+  },
+  {
+   "default": "0",
+   "description": "Points awarded when this answer is correct (quiz mode).",
+   "fieldname": "points",
+   "fieldtype": "Int",
+   "label": "Points"
+  },
+  {
+   "description": "Correct answer(s), newline-joined. For choice/checkbox fields these must match option values exactly.",
+   "fieldname": "correct_answer",
+   "fieldtype": "Small Text",
+   "label": "Correct answer"
   }
  ],
  "istable": 1,

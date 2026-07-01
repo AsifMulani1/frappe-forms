@@ -35,6 +35,15 @@
   "allow_edit",
   "show_my_submissions",
   "allow_delete",
+  "notify_on_response",
+  "notify_email",
+  "scheduling_section",
+  "opens_on",
+  "closes_on",
+  "response_limit",
+  "quiz_section",
+  "is_quiz",
+  "show_score",
   "fields_section",
   "fields"
  ],
@@ -233,6 +242,65 @@
    "fieldname": "allow_delete",
    "fieldtype": "Check",
    "label": "Allow Deleting Responses"
+  },
+  {
+   "default": "0",
+   "description": "Email a notification to the form owner (or the address below) on every new response.",
+   "fieldname": "notify_on_response",
+   "fieldtype": "Check",
+   "label": "Notify on new response"
+  },
+  {
+   "depends_on": "notify_on_response",
+   "description": "Where to send response notifications. Defaults to the form owner's email if blank.",
+   "fieldname": "notify_email",
+   "fieldtype": "Data",
+   "label": "Notification email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "scheduling_section",
+   "fieldtype": "Section Break",
+   "label": "Scheduling & limits"
+  },
+  {
+   "description": "If set, the form only accepts responses from this time onwards.",
+   "fieldname": "opens_on",
+   "fieldtype": "Datetime",
+   "label": "Opens on"
+  },
+  {
+   "description": "If set, the form stops accepting responses after this time.",
+   "fieldname": "closes_on",
+   "fieldtype": "Datetime",
+   "label": "Closes on"
+  },
+  {
+   "default": "0",
+   "description": "Maximum number of responses to accept (Collection mode). 0 = unlimited.",
+   "fieldname": "response_limit",
+   "fieldtype": "Int",
+   "label": "Response limit"
+  },
+  {
+   "fieldname": "quiz_section",
+   "fieldtype": "Section Break",
+   "label": "Quiz"
+  },
+  {
+   "default": "0",
+   "description": "Grade responses against per-question correct answers and points.",
+   "fieldname": "is_quiz",
+   "fieldtype": "Check",
+   "label": "Make this a quiz"
+  },
+  {
+   "default": "0",
+   "depends_on": "is_quiz",
+   "description": "Show respondents their score immediately after submitting.",
+   "fieldname": "show_score",
+   "fieldtype": "Check",
+   "label": "Show score after submit"
   },
   {
    "fieldname": "fields_section",

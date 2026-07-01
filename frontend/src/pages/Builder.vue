@@ -45,7 +45,11 @@ function savePayload() {
     is_template: form.is_template, shuffle_questions: form.shuffle_questions,
     show_progress: form.show_progress, email_receipt: form.email_receipt, allow_edit: form.allow_edit,
     apply_doc_perms: form.apply_doc_perms, show_my_submissions: form.show_my_submissions,
-    allow_delete: form.allow_delete, fields: form.fields,
+    allow_delete: form.allow_delete,
+    notify_on_response: form.notify_on_response, notify_email: form.notify_email,
+    opens_on: form.opens_on, closes_on: form.closes_on, response_limit: form.response_limit,
+    is_quiz: form.is_quiz, show_score: form.show_score,
+    fields: form.fields,
   }
 }
 
@@ -78,6 +82,11 @@ async function doSave() {
   // Reconcile only server-owned identity in place. We never reassign form.fields or the meta
   // text fields, so the inputs the user is typing in are not torn down and re-rendered.
   form.name = data.name
+  // A Draft's slug tracks its title, so renaming changes it. Keep the /:slug/edit URL in sync
+  // (replace, not push) so the address bar stays correct and a reload still resolves the form.
+  if (data.slug !== form.slug && router.currentRoute.value.name === 'Builder') {
+    router.replace({ name: 'Builder', params: { slug: data.slug } })
+  }
   form.slug = data.slug
   form.status = data.status
   form.doctype_name = data.doctype_name
@@ -131,9 +140,10 @@ function addField(typeId, index) {
     reqd: 0, help_text: '',
     options: isGrid(typeId) ? 'Column 1\nColumn 2\nColumn 3' : hasOptions(typeId) ? 'Option 1\nOption 2\nOption 3' : '',
     grid_rows: isGrid(typeId) ? 'Row 1\nRow 2' : '',
-    mapped_field: '', fieldname: '',
+    mapped_field: '', fieldname: '', field_key: '',
     has_other: 0, shuffle_options: 0, min_value: '', max_value: '', max_length: 0,
     validation_pattern: '', error_message: '', scale_min: 1, scale_max: 5, min_label: '', max_label: '',
+    condition_field: '', condition_operator: 'equals', condition_value: '', points: 0, correct_answer: '',
   }
   // index given (insert-between) → place there; otherwise append.
   if (index == null || index >= form.fields.length) form.fields.push(f)
@@ -162,7 +172,7 @@ function deleteField(name) {
 function duplicateField(name) {
   const i = form.fields.findIndex((f) => f.name === name)
   if (i < 0) return
-  form.fields.splice(i + 1, 0, { ...form.fields[i], name: `tmp-${++tmpSeq}`, fieldname: '' })
+  form.fields.splice(i + 1, 0, { ...form.fields[i], name: `tmp-${++tmpSeq}`, fieldname: '', field_key: '' })
   scheduleSave()
 }
 function moveField(name, dir) {
@@ -180,6 +190,13 @@ function reorder(from, to) {
 }
 
 function publish() {
+  // Name-check up front so an unnamed form prompts immediately, rather than confirm-then-error.
+  // (The server enforces this too — this is just the friendlier path.)
+  const title = (form.title || '').trim()
+  if (!title || title.toLowerCase() === 'untitled form') {
+    toast.error('Give your form a name before publishing — it becomes its link and DocType name.')
+    return
+  }
   confirmDialog({
     title: 'Publish this form?',
     message: form.storage_mode === 'Linked'

@@ -167,6 +167,13 @@ def _form_dict(form) -> dict:
 		"allow_edit": cint(form.allow_edit),
 		"show_my_submissions": cint(form.show_my_submissions),
 		"allow_delete": cint(form.allow_delete),
+		"notify_on_response": cint(form.notify_on_response),
+		"notify_email": form.notify_email,
+		"opens_on": form.opens_on,
+		"closes_on": form.closes_on,
+		"response_limit": cint(form.response_limit),
+		"is_quiz": cint(form.is_quiz),
+		"show_score": cint(form.show_score),
 		"thank_you_message": form.thank_you_message,
 		"redirect_url": form.redirect_url,
 		"archived": cint(form.archived),
@@ -176,6 +183,7 @@ def _form_dict(form) -> dict:
 				"name": f.name,
 				"label": f.label,
 				"fieldname": f.fieldname,
+				"field_key": f.field_key,
 				"field_type": f.field_type,
 				"reqd": cint(f.reqd),
 				"help_text": f.help_text,
@@ -193,6 +201,11 @@ def _form_dict(form) -> dict:
 				"scale_max": cint(f.scale_max) or 5,
 				"min_label": f.min_label,
 				"max_label": f.max_label,
+				"condition_field": f.condition_field,
+				"condition_operator": f.condition_operator or "equals",
+				"condition_value": f.condition_value,
+				"points": cint(f.points),
+				"correct_answer": f.correct_answer,
 			}
 			for f in form.fields
 		],
@@ -236,7 +249,8 @@ def save_form(name: str, data: str) -> dict:
 	for key in ("title", "description", "accent", "cover_image", "category", "storage_mode",
 			"target_doctype", "login_required", "allow_multiple", "collect_email",
 			"apply_doc_perms", "shuffle_questions", "show_progress", "email_receipt", "allow_edit",
-			"show_my_submissions", "allow_delete",
+			"show_my_submissions", "allow_delete", "notify_on_response", "notify_email",
+			"opens_on", "closes_on", "response_limit", "is_quiz", "show_score",
 			"thank_you_message", "redirect_url", "is_template"):
 		if key in payload:
 			doc.set(key, payload[key])
@@ -265,7 +279,13 @@ def save_form(name: str, data: str) -> dict:
 				"scale_max": cint(row.get("scale_max")) or 5,
 				"min_label": row.get("min_label"),
 				"max_label": row.get("max_label"),
-				# Keep a frozen fieldname; otherwise let publish derive it.
+				"condition_field": row.get("condition_field"),
+				"condition_operator": row.get("condition_operator") or "equals",
+				"condition_value": row.get("condition_value"),
+				"points": cint(row.get("points")),
+				"correct_answer": row.get("correct_answer"),
+				# Keep the stable field_key (and frozen fieldname); otherwise let the controller/publish derive them.
+				"field_key": (frozen.field_key if frozen else row.get("field_key")) or "",
 				"fieldname": (frozen.fieldname if (frozen and frozen.fieldname) else row.get("fieldname")),
 			})
 
@@ -330,28 +350,47 @@ def set_archived_bulk(names: str, archived: int = 1) -> dict:
 	return {"updated": len(names), "archived": cint(archived)}
 
 
+# Form-level settings copied verbatim on duplicate. status/slug/doctype_name/sheet_name/views and
+# is_template are intentionally NOT copied — a duplicate is a fresh, non-template Draft of its own.
+_DUPLICATE_META = (
+	"description", "accent", "cover_image", "category", "storage_mode", "target_doctype",
+	"apply_doc_perms", "thank_you_message", "redirect_url", "collect_email", "allow_multiple",
+	"login_required", "shuffle_questions", "show_progress", "email_receipt", "allow_edit",
+	"show_my_submissions", "allow_delete", "notify_on_response", "notify_email",
+	"opens_on", "closes_on", "response_limit", "is_quiz", "show_score",
+)
+_DUPLICATE_FIELD_ATTRS = (
+	"label", "field_type", "reqd", "help_text", "options", "grid_rows", "mapped_field",
+	"has_other", "shuffle_options", "min_value", "max_value", "max_length",
+	"validation_pattern", "error_message", "scale_min", "scale_max", "min_label", "max_label",
+	"condition_operator", "condition_value", "points", "correct_answer",
+)
+
+
 @frappe.whitelist()
 def duplicate_form(name: str) -> dict:
-	"""Copy a form (used by 'Use template' and plain duplicate). Always a fresh Draft."""
+	"""Copy a form (used by 'Use template' and plain duplicate). Always a fresh Draft.
+
+	Carries every form-level setting and field attribute. Fieldnames are NOT copied (they
+	re-derive/freeze on the new form's own publish). field_keys are regenerated, and conditional-logic
+	references are remapped onto the new keys so skip logic keeps pointing at the copied field.
+	"""
 	_guard()
 	_require(name, "read")
 	src = frappe.get_doc("FF Form", name)
 	doc = frappe.new_doc("FF Form")
 	doc.title = f"{src.title} (copy)"
-	doc.description = src.description
-	doc.accent = src.accent
-	doc.storage_mode = src.storage_mode
-	doc.target_doctype = src.target_doctype
-	doc.thank_you_message = src.thank_you_message
-	doc.collect_email = src.collect_email
-	doc.allow_multiple = src.allow_multiple
-	doc.login_required = src.login_required
-	# New form: fieldnames are NOT carried over (they re-derive/freeze on its own publish).
+	for key in _DUPLICATE_META:
+		doc.set(key, src.get(key))
+
+	# Fresh keys + a map from the source keys, so a field's condition_field points at the COPY of
+	# its controlling field rather than the original form's field.
+	key_map = {f.field_key: frappe.generate_hash(length=10) for f in src.fields if f.field_key}
 	for f in src.fields:
-		doc.append("fields", {
-			"label": f.label, "field_type": f.field_type, "reqd": f.reqd,
-			"help_text": f.help_text, "options": f.options, "mapped_field": f.mapped_field,
-		})
+		row = {attr: f.get(attr) for attr in _DUPLICATE_FIELD_ATTRS}
+		row["field_key"] = key_map.get(f.field_key) or frappe.generate_hash(length=10)
+		row["condition_field"] = key_map.get(f.condition_field, "")
+		doc.append("fields", row)
 	doc.insert()
 	frappe.db.commit()
 	return _form_dict(doc)
@@ -496,6 +535,8 @@ def responses_summary(slug: str) -> dict:
 	if meta.get_field("workflow_state"):
 		confirmed = frappe.db.count(dt, {"workflow_state": "Confirmed"})
 
+	columns = set(frappe.db.get_table_columns(dt))
+
 	charts = []
 	rating = None
 	for f in form.fields:
@@ -504,6 +545,11 @@ def responses_summary(slug: str) -> dict:
 		# A field edited into the builder but not yet re-published has no live column/table
 		# in the generated DocType. Skip it so one unmaterialised field never blanks the summary.
 		if not mf:
+			continue
+		# Meta can still list a field whose physical column is gone (published before a
+		# migrate, or a dropped column). Direct-column charts would 1054 the whole summary,
+		# so skip them; child-table types (checkboxes/grids) are guarded separately below.
+		if f.field_type in ("single_choice", "dropdown", "linear_scale", "rating") and fn not in columns:
 			continue
 		if f.field_type in ("single_choice", "dropdown"):
 			rows = frappe.db.sql(
@@ -594,7 +640,13 @@ def list_submissions(slug: str, limit: int = 50, start: int = 0) -> dict:
 			break
 
 	fields = ["name", "creation"] + [d["fieldname"] for d in display]
-	if meta.get_field("workflow_state"):
+	# Only surface the triage State column once it's actually in use: some submission has been
+	# moved off the default "Pending" (or an ERPNext workflow is driving a non-Pending state). A
+	# form that never triages shouldn't show a column of identical "Pending" badges.
+	has_workflow = bool(meta.get_field("workflow_state")) and bool(
+		frappe.db.exists(dt, {"workflow_state": ["not in", ["", "Pending"]]})
+	)
+	if has_workflow:
 		fields.append("workflow_state")
 
 	rows = frappe.get_all(dt, fields=fields, limit=min(cint(limit) or 50, MAX_PAGE_SIZE), start=cint(start),
@@ -602,7 +654,7 @@ def list_submissions(slug: str, limit: int = 50, start: int = 0) -> dict:
 	return {
 		"doctype": dt,
 		"display_fields": display,
-		"has_workflow": bool(meta.get_field("workflow_state")),
+		"has_workflow": has_workflow,
 		"rows": rows,
 		"total": frappe.db.count(dt),
 	}
@@ -630,6 +682,10 @@ def get_submission(slug: str, name: str) -> dict:
 	email = doc.get("respondent_email")
 	if email:
 		fields.insert(0, {"label": "Email", "fieldname": "respondent_email", "value": email})
+
+	if cint(form.is_quiz) and doc.get("max_score"):
+		fields.insert(0, {"label": "Score", "fieldname": "score",
+			"value": f"{flt(doc.get('score')):g} / {flt(doc.get('max_score')):g}"})
 
 	return {
 		"name": doc.name,

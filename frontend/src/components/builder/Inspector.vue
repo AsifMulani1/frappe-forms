@@ -1,12 +1,47 @@
 <script setup>
 import { computed, watch } from 'vue'
-import { Badge, Button, FormControl, Switch, TabButtons, createResource } from 'frappe-ui'
+import { Badge, Button, DateTimePicker, FormControl, Switch, TabButtons, createResource } from 'frappe-ui'
 import Icon from '../Icon.vue'
-import { FIELD_TYPES, FT, hasOptions, canHaveOther, canShuffleOptions, isText } from '../../fieldTypes'
+import { FIELD_TYPES, FT, hasOptions, canHaveOther, canShuffleOptions, isText, canBeConditionSource, isGradable } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
 
 const props = defineProps({ form: Object, field: Object })
 const emit = defineEmits(['update-meta', 'update-field', 'open-dev'])
+
+// Conditional logic + quiz helpers (mirror Canvas; dev mode edits fields through this sidebar).
+function priorSources(field) {
+  const out = []
+  for (const f of props.form.fields) {
+    if (f.name === field.name) break
+    if (canBeConditionSource(f.field_type) && f.field_key) out.push(f)
+  }
+  return out
+}
+function controllingField(field) {
+  return props.form.fields.find((f) => f.field_key === field.condition_field)
+}
+function conditionValueOptions(field) {
+  const ctrl = controllingField(field)
+  if (!ctrl) return []
+  if (ctrl.field_type === 'yes_no') return ['Yes', 'No']
+  return (ctrl.options || '').split('\n').filter(Boolean)
+}
+function quizOptions(field) {
+  if (field.field_type === 'yes_no') return ['Yes', 'No']
+  return (field.options || '').split('\n').filter(Boolean)
+}
+function correctSet(field) {
+  return (field.correct_answer || '').split('\n').filter(Boolean)
+}
+function isCorrect(field, opt) {
+  return correctSet(field).includes(opt)
+}
+function toggleCorrect(field, opt) {
+  const set = new Set(correctSet(field))
+  if (set.has(opt)) set.delete(opt)
+  else set.add(opt)
+  emit('update-field', field.name, { correct_answer: [...set].join('\n') })
+}
 
 const linked = computed(() => props.form.storage_mode === 'Linked')
 const fieldTypeOptions = FIELD_TYPES.map((t) => ({ label: t.label, value: t.id }))
@@ -98,6 +133,24 @@ function setStorage(mode) {
         <Switch :modelValue="!!form.show_my_submissions" label="Show my submissions" @update:modelValue="emit('update-meta', { show_my_submissions: $event ? 1 : 0 })" />
         <Switch v-if="form.show_my_submissions" :modelValue="!!form.allow_delete" label="Allow deleting responses" @update:modelValue="emit('update-meta', { allow_delete: $event ? 1 : 0 })" />
         <Switch :modelValue="!!form.is_template" label="Use as template" @update:modelValue="emit('update-meta', { is_template: $event ? 1 : 0 })" />
+        <Switch :modelValue="!!form.notify_on_response" label="Notify on new response" @update:modelValue="emit('update-meta', { notify_on_response: $event ? 1 : 0 })" />
+        <FormControl v-if="form.notify_on_response" type="text" placeholder="Notification email (defaults to owner)"
+          :modelValue="form.notify_email" @update:modelValue="emit('update-meta', { notify_email: $event })" />
+        <Switch :modelValue="!!form.is_quiz" label="Make this a quiz" @update:modelValue="emit('update-meta', { is_quiz: $event ? 1 : 0 })" />
+        <Switch v-if="form.is_quiz" :modelValue="!!form.show_score" label="Show score after submit" @update:modelValue="emit('update-meta', { show_score: $event ? 1 : 0 })" />
+      </div>
+
+      <div class="flex flex-col gap-3 px-4 py-3.5 border-b border-outline-gray-1">
+        <span class="text-xs text-ink-gray-7">Scheduling & limits</span>
+        <div class="flex flex-col gap-1.5">
+          <span class="text-xs text-ink-gray-6">Opens on</span>
+          <DateTimePicker :modelValue="form.opens_on" placeholder="Open immediately" @update:modelValue="emit('update-meta', { opens_on: $event })" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <span class="text-xs text-ink-gray-6">Closes on</span>
+          <DateTimePicker :modelValue="form.closes_on" placeholder="No closing date" @update:modelValue="emit('update-meta', { closes_on: $event })" />
+        </div>
+        <FormControl type="number" label="Response limit (0 = unlimited)" :modelValue="form.response_limit || ''" @update:modelValue="emit('update-meta', { response_limit: +$event || 0 })" />
       </div>
 
       <div v-if="prefs.devMode" class="px-4 py-3.5 mt-auto">
@@ -186,6 +239,40 @@ function setStorage(mode) {
         <Switch :modelValue="!!field.reqd" label="Required field" @update:modelValue="emit('update-field', field.name, { reqd: $event ? 1 : 0 })" />
         <span v-if="field.field_type === 'email'" class="text-[11.5px] text-ink-gray-5">Checks for a valid email address.</span>
         <span v-if="field.field_type === 'number'" class="text-[11.5px] text-ink-gray-5">Whole numbers only.</span>
+      </div>
+
+      <!-- conditional logic -->
+      <div v-if="priorSources(field).length" class="flex flex-col gap-2 px-4 py-3.5 border-b border-outline-gray-1">
+        <span class="text-xs text-ink-gray-7">Conditional logic</span>
+        <FormControl type="select" :modelValue="field.condition_field || ''"
+          :options="[{ label: 'Always show', value: '' }, ...priorSources(field).map((s) => ({ label: `Show if “${s.label}”`, value: s.field_key }))]"
+          @update:modelValue="emit('update-field', field.name, { condition_field: $event })" />
+        <template v-if="field.condition_field">
+          <FormControl type="select" :modelValue="field.condition_operator || 'equals'"
+            :options="[{ label: 'equals', value: 'equals' }, { label: 'is not', value: 'not_equals' }, { label: 'contains', value: 'contains' }]"
+            @update:modelValue="emit('update-field', field.name, { condition_operator: $event })" />
+          <FormControl v-if="conditionValueOptions(field).length" type="select" :modelValue="field.condition_value || ''"
+            :options="[{ label: 'Choose a value', value: '' }, ...conditionValueOptions(field).map((v) => ({ label: v, value: v }))]"
+            @update:modelValue="emit('update-field', field.name, { condition_value: $event })" />
+          <FormControl v-else type="text" placeholder="Value" :modelValue="field.condition_value"
+            @update:modelValue="emit('update-field', field.name, { condition_value: $event })" />
+        </template>
+      </div>
+
+      <!-- quiz: points + correct answer -->
+      <div v-if="form.is_quiz && isGradable(field.field_type)" class="flex flex-col gap-2.5 px-4 py-3.5 border-b border-outline-gray-1">
+        <span class="text-xs text-ink-gray-7">Quiz</span>
+        <FormControl type="number" label="Points" :modelValue="field.points || ''"
+          @update:modelValue="emit('update-field', field.name, { points: +$event || 0 })" />
+        <span class="text-[11.5px] text-ink-gray-5">Correct answer</span>
+        <div v-if="hasOptions(field.field_type) || field.field_type === 'yes_no'" class="flex flex-wrap gap-1.5">
+          <button v-for="o in quizOptions(field)" :key="o" type="button"
+                  class="px-2.5 h-7 rounded-md border text-sm transition-colors"
+                  :class="isCorrect(field, o) ? 'border-ink-green-500 bg-surface-green-2 text-ink-green-700' : 'border-outline-gray-2 text-ink-gray-7 hover:bg-surface-gray-2'"
+                  @click="toggleCorrect(field, o)">{{ o }}</button>
+        </div>
+        <FormControl v-else type="text" placeholder="Expected answer" :modelValue="field.correct_answer"
+          @update:modelValue="emit('update-field', field.name, { correct_answer: $event })" />
       </div>
 
       <div v-if="prefs.devMode" class="px-4 py-3.5 mt-auto bg-surface-gray-1">

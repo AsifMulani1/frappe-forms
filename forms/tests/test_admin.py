@@ -101,6 +101,8 @@ class TestAdminAuth(IntegrationTestCase):
 		base["fields"].append({"label": "Pick Many", "field_type": "checkboxes", "options": "X\nY"})
 		admin.save_form(form["name"], frappe.as_json(base))
 		frappe.db.commit()
+		# Draft slug tracks the title, so it changed from the create-time "untitled-form-N".
+		form["slug"] = frappe.db.get_value("FF Form", form["name"], "slug")
 		# Must not raise; the unmaterialised fields are simply absent from the charts.
 		result = admin.responses_summary(form["slug"])
 		self.assertEqual(result["charts"], [])
@@ -139,6 +141,8 @@ class TestOpenInSheet(IntegrationTestCase):
 				"respondent_email": f"person{i}@example.com",
 			}).insert(ignore_permissions=True)
 		frappe.db.commit()
+		# Draft slug tracks the title, so it changed from the create-time "untitled-form-N".
+		form["slug"] = doc.slug
 		return form
 
 	def test_open_in_sheet_creates_sheet_with_data(self):
@@ -169,3 +173,37 @@ class TestOpenInSheet(IntegrationTestCase):
 		# Persistent: refreshing exports into the same sheet, never a new one.
 		self.assertEqual(first, second)
 		self.assertEqual(frappe.db.count("Sheet", {"name": first}), 1)
+
+
+class TestDuplicate(IntegrationTestCase):
+	def test_duplicate_carries_config_and_remaps_conditions(self):
+		slug = "api-dup-src"
+		if frappe.db.exists("FF Form", {"slug": slug}):
+			frappe.delete_doc("FF Form", frappe.db.get_value("FF Form", {"slug": slug}, "name"),
+				force=True, ignore_permissions=True)
+		src = frappe.new_doc("FF Form")
+		src.title = "Api Dup Src"
+		src.slug = slug
+		src.storage_mode = "Collection"
+		src.is_quiz = 1
+		src.response_limit = 5
+		src.append("fields", {"label": "Has pet", "field_type": "single_choice",
+			"options": "Yes\nNo", "field_key": "ctrl"})
+		src.append("fields", {"label": "Pet name", "field_type": "short_answer", "field_key": "dep",
+			"condition_field": "ctrl", "condition_operator": "equals", "condition_value": "Yes",
+			"points": 2, "correct_answer": "Rex"})
+		src.insert(ignore_permissions=True)
+
+		dup = admin.duplicate_form(src.name)
+		fields = dup["fields"]
+		# Form-level settings copied; the duplicate is its own Draft (never a template).
+		self.assertEqual(dup["is_quiz"], 1)
+		self.assertEqual(dup["response_limit"], 5)
+		self.assertEqual(dup["status"], "Draft")
+		# Field config copied.
+		self.assertEqual(fields[1]["points"], 2)
+		self.assertEqual(fields[1]["correct_answer"], "Rex")
+		self.assertEqual(fields[1]["condition_value"], "Yes")
+		# Keys are regenerated, and the condition points at the COPIED controlling field's new key.
+		self.assertNotEqual(fields[0]["field_key"], "ctrl")
+		self.assertEqual(fields[1]["condition_field"], fields[0]["field_key"])
