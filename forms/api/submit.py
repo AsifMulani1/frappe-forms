@@ -40,7 +40,7 @@ def _block_if_duplicate(form, respondent_email: str | None):
 
 
 @frappe.whitelist(allow_guest=True)
-@rate_limit(key="slug", limit=20, seconds=60 * 60)
+@rate_limit(key="slug", limit=2000, seconds=60 * 60)  # TEMP: raised from 20 for live demo — revert after
 def submit(slug: str, data: str, hp: str | None = None, token: str | None = None,
 		email: str | None = None, record: str | None = None):
 	"""Validate + insert (or, with a valid edit token, update) a submission.
