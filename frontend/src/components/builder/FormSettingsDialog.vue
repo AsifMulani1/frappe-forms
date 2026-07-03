@@ -95,6 +95,15 @@ function onCover(file) {
           <Switch :modelValue="form.show_progress !== 0" label="Show progress bar" @update:modelValue="set({ show_progress: $event ? 1 : 0 })" />
         </section>
 
+        <!-- Embedding -->
+        <section class="flex flex-col gap-3.5">
+          <span class="text-xs text-ink-gray-5">Embedding</span>
+          <FormControl type="textarea" label="Allowed embedding domains" :rows="3"
+            placeholder="https://example.com&#10;https://blog.example.com"
+            description="One site per line. The published form can be embedded via iframe only on these domains. Leave empty to disable embedding."
+            :modelValue="form.embed_allowed_domains" @update:modelValue="set({ embed_allowed_domains: $event })" />
+        </section>
+
         <!-- Advanced (collapsed by default) -->
         <section class="flex flex-col gap-3.5 pt-2 border-t border-outline-gray-1">
           <button class="flex items-center gap-1.5 -mb-1 text-xs text-ink-gray-5 hover:text-ink-gray-7 transition-colors"

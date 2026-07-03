@@ -9,10 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "frappe-ui": "^0.1.278",
+    "frappe-ui": "1.0.0-beta.19",
     "lucide-vue-next": "^0.460.0",
     "qrcode": "^1.5.4",
-    "vue": "^3.4.0",
+    "vue": "^3.5.0",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {

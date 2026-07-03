@@ -1,11 +1,11 @@
 <script setup>
 import { computed, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { Button, DatePicker, FormControl, TimePicker, confirmDialog, toast } from 'frappe-ui'
+import { Button, FormControl, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import { conditionMet } from '../fieldTypes'
 import Icon from '../components/Icon.vue'
-import SignaturePad from '../components/SignaturePad.vue'
+import RespondentField from '../components/RespondentField.vue'
 
 const props = defineProps({ slug: String })
 const route = useRoute()
@@ -134,13 +134,6 @@ function prevPage() {
     currentPage.value--
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
-}
-
-function scaleRange(f) {
-  let lo = Number.isFinite(+f.scale_min) ? +f.scale_min : 1
-  let hi = Number.isFinite(+f.scale_max) ? +f.scale_max : 5
-  if (hi <= lo || hi - lo > 14) { lo = 1; hi = 5 }
-  return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
 }
 
 async function load() {
@@ -334,7 +327,6 @@ function onDropdown(f, v) {
 }
 // Grids: answers[fieldname] is { row: col } (mc) or { row: [cols] } (checkbox).
 function setGridMc(f, row, col) { setVal(f.fieldname, { ...(answers[f.fieldname] || {}), [row]: col }) }
-function gridMcChecked(f, row, col) { return (answers[f.fieldname] || {})[row] === col }
 function toggleGridCb(f, row, col) {
   const cur = { ...(answers[f.fieldname] || {}) }
   const arr = Array.isArray(cur[row]) ? [...cur[row]] : []
@@ -344,10 +336,6 @@ function toggleGridCb(f, row, col) {
   if (arr.length) cur[row] = arr
   else delete cur[row]
   setVal(f.fieldname, cur)
-}
-function gridCbChecked(f, row, col) {
-  const v = (answers[f.fieldname] || {})[row]
-  return Array.isArray(v) && v.includes(col)
 }
 
 // Mirror the server's validation client-side: false = ok, true = required, string = specific message.
@@ -499,139 +487,21 @@ async function submit() {
               <p v-if="page.header.help_text" class="text-sm text-ink-gray-5 mt-1">{{ page.header.help_text }}</p>
             </div>
 
-            <template v-for="f in visibleFields(page.fields)" :key="f.fieldname">
-            <div class="flex flex-col gap-2 mb-6">
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[15px] font-medium text-ink-gray-9">
-                  {{ f.label }}<span v-if="f.reqd" class="text-ink-red-500 ml-0.5">*</span>
-                </span>
-                <span v-if="f.help_text" class="text-sm text-ink-gray-5">{{ f.help_text }}</span>
-              </div>
-
-              <FormControl v-if="f.field_type === 'short_answer'" type="text" size="lg" placeholder="Your answer"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              <FormControl v-else-if="f.field_type === 'email'" type="email" size="lg" placeholder="name@example.com"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              <FormControl v-else-if="f.field_type === 'number'" type="number" size="lg" placeholder="0"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              <FormControl v-else-if="f.field_type === 'phone'" type="tel" size="lg" placeholder="+1 (555) 000-0000"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              <div v-else-if="f.field_type === 'time'" class="r-picker">
-                <TimePicker placeholder="Select time"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              </div>
-              <FormControl v-else-if="f.field_type === 'paragraph'" type="textarea" size="lg" :rows="4" placeholder="Your answer"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              <FormControl v-else-if="f.field_type === 'address'" type="textarea" size="lg" :rows="3" placeholder="Street, city, state, ZIP"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              <div v-else-if="f.field_type === 'date'" class="r-picker">
-                <DatePicker placeholder="Select date"
-                     :modelValue="answers[f.fieldname] || ''" @update:modelValue="setVal(f.fieldname, $event)" />
-              </div>
-              <template v-else-if="f.field_type === 'dropdown'">
-                <FormControl type="select" size="lg"
-                     :options="[{ label: 'Choose an option', value: '' }, ...optionMap[f.fieldname].map((o) => ({ label: o, value: o })), ...(f.has_other ? [{ label: 'Other…', value: '__other__' }] : [])]"
-                     :modelValue="otherOn[f.fieldname] ? '__other__' : (answers[f.fieldname] || '')" @update:modelValue="onDropdown(f, $event)" />
-                <FormControl v-if="f.has_other && otherOn[f.fieldname]" type="text" size="lg" placeholder="Your answer"
-                     :modelValue="otherText[f.fieldname] || ''" @update:modelValue="setOther(f, $event)" />
-              </template>
-
-              <!-- file upload -->
-              <label v-else-if="f.field_type === 'file_upload'"
-                     class="flex items-center gap-2.5 h-10 px-3 rounded-md bg-surface-gray-2 hover:bg-surface-gray-3 transition-colors cursor-pointer">
-                <input type="file" class="hidden" @change="uploadFile(f, $event)" />
-                <Icon :name="answers[f.fieldname] ? 'file-check-2' : 'paperclip'" :size="16" class="text-ink-gray-6 shrink-0" />
-                <span class="text-base text-ink-gray-8 truncate flex-1">
-                  {{ uploading[f.fieldname] ? 'Uploading…' : (fileNames[f.fieldname] || 'Choose a file') }}
-                </span>
-                <button v-if="answers[f.fieldname]" type="button" class="text-ink-gray-4 hover:text-ink-gray-7 shrink-0" @click.prevent.stop="clearFile(f)"><Icon name="x" :size="15" /></button>
-              </label>
-
-              <!-- signature -->
-              <SignaturePad v-else-if="f.field_type === 'signature'"
-                     :modelValue="answers[f.fieldname]" @update:modelValue="setVal(f.fieldname, $event)" />
-
-              <div v-else-if="f.field_type === 'rating'" class="flex gap-1">
-                <span v-for="s in 5" :key="s" class="star" :class="{ on: s <= (answers[f.fieldname] || 0) }" @click="setVal(f.fieldname, s)">
-                  <Icon name="star" :size="28" :style="{ fill: s <= (answers[f.fieldname] || 0) ? 'var(--amber-500)' : 'none' }" />
-                </span>
-              </div>
-
-              <div v-else-if="f.field_type === 'linear_scale'" class="flex items-center gap-x-4 gap-y-2 flex-wrap pt-1">
-                <span v-if="f.min_label" class="text-sm text-ink-gray-6 shrink-0">{{ f.min_label }}</span>
-                <div class="flex items-center gap-3">
-                  <button v-for="n in scaleRange(f)" :key="n" type="button" class="flex flex-col items-center gap-1.5"
-                          @click="setVal(f.fieldname, n)">
-                    <span class="text-[13px] text-ink-gray-7">{{ n }}</span>
-                    <span class="r-radio" :style="answers[f.fieldname] === n ? 'border-color:var(--accent)' : ''">
-                      <span v-if="answers[f.fieldname] === n" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
-                    </span>
-                  </button>
-                </div>
-                <span v-if="f.max_label" class="text-sm text-ink-gray-6 shrink-0">{{ f.max_label }}</span>
-              </div>
-
-              <div v-else-if="f.field_type === 'mc_grid' || f.field_type === 'checkbox_grid'" class="overflow-x-auto -mx-1 px-1">
-                <table class="r-grid">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th v-for="col in f.options" :key="col" class="px-3 pb-2 text-sm font-normal text-ink-gray-6 text-center">{{ col }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in f.grid_rows" :key="row" class="border-t border-outline-gray-1">
-                      <td class="py-2.5 pr-4 text-base text-ink-gray-8">{{ row }}</td>
-                      <td v-for="col in f.options" :key="col" class="px-3 text-center">
-                        <button v-if="f.field_type === 'mc_grid'" type="button" class="r-radio mx-auto"
-                                :style="gridMcChecked(f, row, col) ? 'border-color:var(--accent)' : ''" @click="setGridMc(f, row, col)">
-                          <span v-if="gridMcChecked(f, row, col)" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
-                        </button>
-                        <button v-else type="button" class="r-cb mx-auto" :class="{ 'grid-cb-on': gridCbChecked(f, row, col) }" @click="toggleGridCb(f, row, col)">
-                          <Icon v-if="gridCbChecked(f, row, col)" name="check" :size="12" />
-                        </button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div v-else-if="f.field_type === 'yes_no'" class="flex gap-2">
-                <div v-for="o in ['Yes', 'No']" :key="o" class="r-choice min-w-[92px] flex-none"
-                     :class="{ sel: answers[f.fieldname] === o }" @click="setVal(f.fieldname, o)">
-                  <span class="r-radio"><span v-if="answers[f.fieldname] === o" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" /></span>
-                  <span class="text-base text-ink-gray-8">{{ o }}</span>
-                </div>
-              </div>
-
-              <div v-else-if="f.field_type === 'single_choice'" class="flex flex-col gap-2">
-                <div v-for="o in optionMap[f.fieldname]" :key="o" class="r-choice"
-                     :class="{ sel: !otherOn[f.fieldname] && answers[f.fieldname] === o }" @click="selectChoice(f, o)">
-                  <span class="r-radio"><span v-if="!otherOn[f.fieldname] && answers[f.fieldname] === o" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" /></span>
-                  <span class="text-base text-ink-gray-8">{{ o }}</span>
-                </div>
-                <div v-if="f.has_other" class="r-choice" :class="{ sel: otherOn[f.fieldname] }" @click="selectOther(f)">
-                  <span class="r-radio"><span v-if="otherOn[f.fieldname]" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" /></span>
-                  <span class="text-base text-ink-gray-8 shrink-0">Other:</span>
-                  <input class="ml-1 flex-1 bg-transparent outline-none border-b border-outline-gray-2 focus:border-outline-gray-4 text-base text-ink-gray-8 py-0.5"
-                         :value="otherText[f.fieldname] || ''" placeholder="Your answer"
-                         @click.stop @input="setOther(f, $event.target.value)" />
-                </div>
-              </div>
-
-              <div v-else-if="f.field_type === 'checkboxes'" class="flex flex-col gap-2">
-                <div v-for="o in optionMap[f.fieldname]" :key="o" class="r-choice"
-                     :class="{ sel: (answers[f.fieldname] || []).includes(o) }" @click="toggleCb(f.fieldname, o)">
-                  <span class="r-cb"><Icon v-if="(answers[f.fieldname] || []).includes(o)" name="check" :size="12" /></span>
-                  <span class="text-base text-ink-gray-8">{{ o }}</span>
-                </div>
-              </div>
-
-              <span v-if="errors[f.fieldname]" class="text-xs text-ink-red-500 flex items-center gap-1">
-                <Icon name="circle-alert" :size="12" />{{ typeof errors[f.fieldname] === 'string' ? errors[f.fieldname] : 'This field is required.' }}
-              </span>
-            </div>
-            </template>
+            <RespondentField
+              v-for="f in visibleFields(page.fields)" :key="f.fieldname"
+              :field="f" :value="answers[f.fieldname]" :options="optionMap[f.fieldname]"
+              :error="errors[f.fieldname]" :otherOn="!!otherOn[f.fieldname]" :otherText="otherText[f.fieldname]"
+              :uploading="!!uploading[f.fieldname]" :fileName="fileNames[f.fieldname]"
+              @set="setVal(f.fieldname, $event)"
+              @toggleCb="toggleCb(f.fieldname, $event)"
+              @selectChoice="selectChoice(f, $event)"
+              @selectOther="selectOther(f)"
+              @setOther="setOther(f, $event)"
+              @onDropdown="onDropdown(f, $event)"
+              @setGridMc="setGridMc(f, $event.row, $event.col)"
+              @toggleGridCb="toggleGridCb(f, $event.row, $event.col)"
+              @upload="uploadFile(f, $event)"
+              @clearFile="clearFile(f)" />
 
             <div class="flex items-center justify-between border-t border-outline-gray-1 pt-5 mt-1">
               <div class="flex items-center gap-2">

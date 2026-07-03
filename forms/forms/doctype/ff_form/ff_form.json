@@ -20,6 +20,7 @@
   "description",
   "thank_you_message",
   "redirect_url",
+  "embed_allowed_domains",
   "storage_section",
   "storage_mode",
   "target_doctype",
@@ -141,6 +142,12 @@
    "fieldname": "redirect_url",
    "fieldtype": "Data",
    "label": "Redirect URL after submit"
+  },
+  {
+   "description": "One origin per line (e.g. https://example.com). The published form may be embedded in an iframe only on these sites. Empty = embedding off.",
+   "fieldname": "embed_allowed_domains",
+   "fieldtype": "Small Text",
+   "label": "Allowed embedding domains"
   },
   {
    "fieldname": "storage_section",

@@ -15,6 +15,9 @@ const publicUrl = computed(() => `${location.origin}/forms/f/${props.form?.slug}
 const embedCode = computed(
   () => `<iframe src="${publicUrl.value}" width="100%" height="600" frameborder="0" style="border:0"></iframe>`,
 )
+// Embedding only works on domains the owner allow-lists in Form settings; without them the
+// browser refuses to frame the form, so we don't hand out a snippet that would render blank.
+const embedEnabled = computed(() => !!(props.form?.embed_allowed_domains || '').trim())
 const qr = ref('')
 const showQr = ref(false)
 watch(
@@ -164,12 +167,16 @@ function copyEmbed() {
 
         <!-- embed + QR (published only) -->
         <div v-if="form?.status === 'Published'" class="mt-4 flex flex-col gap-3">
-          <div class="flex items-center gap-2">
+          <div v-if="embedEnabled" class="flex items-center gap-2">
             <code class="flex-1 min-w-0 truncate text-xs text-ink-gray-6 bg-surface-gray-2 rounded-md px-2.5 py-2 font-mono">{{ embedCode }}</code>
             <Button variant="subtle" theme="gray" class="shrink-0" @click="copyEmbed">
               <template #prefix><Icon name="code-2" :size="14" /></template>Copy embed
             </Button>
           </div>
+          <p v-else class="text-xs text-ink-gray-5">
+            To embed this form on another site, add that site under
+            <span class="text-ink-gray-7">Form settings → Embedding</span>.
+          </p>
           <div>
             <button class="flex items-center gap-1.5 text-sm text-ink-gray-6 hover:text-ink-gray-9" @click="showQr = !showQr">
               <Icon :name="showQr ? 'chevron-down' : 'chevron-right'" :size="15" />QR code
