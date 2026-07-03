@@ -37,6 +37,21 @@ class TestEmbedFrameAncestors(IntegrationTestCase):
 	def test_bare_host_is_kept(self):
 		self.assertEqual(spa._frame_ancestors("example.com/foo"), ["example.com"])
 
+	def test_wildcard_subdomain_and_port_kept(self):
+		self.assertEqual(
+			spa._frame_ancestors("*.example.com\nhttps://app.test:8443"),
+			["*.example.com", "https://app.test:8443"],
+		)
+
+	def test_directive_injection_token_is_dropped(self):
+		# A token that tries to open a second CSP directive (';', spaces, keywords) is not a
+		# valid host-source and must be discarded rather than emitted into the header.
+		self.assertEqual(spa._frame_ancestors("evil.com; script-src 'unsafe-inline'"), [])
+		self.assertEqual(
+			spa._frame_ancestors("good.com\nevil.com; default-src *"),
+			["good.com"],
+		)
+
 
 class TestEmbedGetContext(IntegrationTestCase):
 	@classmethod

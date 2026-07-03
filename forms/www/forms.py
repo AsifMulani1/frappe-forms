@@ -43,9 +43,16 @@ def _public_form_slug() -> str | None:
 	return unquote(match.group(1)) if match else None
 
 
+# A CSP host-source we're willing to emit: optional http(s) scheme, a hostname (wildcard
+# subdomain allowed), optional port. Anything else — spaces, ';', quotes, CSP keywords — is
+# dropped so a stored value can't inject extra CSP directives into the header.
+_HOST_SOURCE = re.compile(r"^(https?://)?(\*\.)?[A-Za-z0-9.-]+(:[0-9]+)?$")
+
+
 def _frame_ancestors(raw: str | None) -> list[str]:
 	"""Parse the allow-list into CSP host-sources. Accepts one origin per line (commas too),
-	tolerates a pasted scheme/path, and reduces each to `scheme://host[:port]` or a bare host.
+	tolerates a pasted scheme/path, reduces each to `scheme://host[:port]` or a bare host, and
+	keeps only clean host-sources so the value can't smuggle extra directives into the header.
 	"""
 	sources = []
 	for line in (raw or "").replace(",", "\n").splitlines():
@@ -57,6 +64,6 @@ def _frame_ancestors(raw: str | None) -> list[str]:
 			token = f"{scheme}://{rest.split('/', 1)[0]}"
 		else:
 			token = token.split("/", 1)[0]
-		if token:
+		if token and _HOST_SOURCE.match(token):
 			sources.append(token)
 	return sources
