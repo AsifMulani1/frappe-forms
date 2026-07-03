@@ -4,6 +4,7 @@ import Icon from '../Icon.vue'
 import FieldTypePicker from './FieldTypePicker.vue'
 import { FT, isLayout, canHaveOther, canShuffleOptions, isText, isGrid, canBeConditionSource, isGradable, hasOptions } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
+import { optionsArray, rowsArray, scaleRange, correctSet, isCorrect, quizOptions, setLine, addLine, removeLine, toggleLine } from './fieldEditing'
 
 import { ref } from 'vue'
 
@@ -60,52 +61,13 @@ function cardStyle(i) {
   return { transform: `translateY(${shift}px)` }
 }
 
-function optionsArray(field) {
-  return (field.options || '').split('\n').filter((o) => o.length || o === '')
-}
-function setOption(field, i, val) {
-  const arr = (field.options || '').split('\n')
-  arr[i] = val
-  emit('update-field', field.name, { options: arr.join('\n') })
-}
-function addOption(field) {
-  const arr = (field.options || '').split('\n').filter((x) => x.length)
-  arr.push(`Option ${arr.length + 1}`)
-  emit('update-field', field.name, { options: arr.join('\n') })
-}
-function removeOption(field, i) {
-  const arr = (field.options || '').split('\n').filter((x) => x.length)
-  arr.splice(i, 1)
-  emit('update-field', field.name, { options: arr.join('\n') })
-}
-
-// Grid rows live in grid_rows (columns reuse `options`, edited via the option helpers above).
-function rowsArray(field) {
-  return (field.grid_rows || '').split('\n').filter((o) => o.length)
-}
-function setRow(field, i, val) {
-  const arr = (field.grid_rows || '').split('\n')
-  arr[i] = val
-  emit('update-field', field.name, { grid_rows: arr.join('\n') })
-}
-function addRow(field) {
-  const arr = (field.grid_rows || '').split('\n').filter((x) => x.length)
-  arr.push(`Row ${arr.length + 1}`)
-  emit('update-field', field.name, { grid_rows: arr.join('\n') })
-}
-function removeRow(field, i) {
-  const arr = (field.grid_rows || '').split('\n').filter((x) => x.length)
-  arr.splice(i, 1)
-  emit('update-field', field.name, { grid_rows: arr.join('\n') })
-}
-
-// Inclusive integer range for a linear-scale field, clamped to a sane span.
-function scaleRange(field) {
-  let lo = Number.isFinite(+field.scale_min) ? +field.scale_min : 1
-  let hi = Number.isFinite(+field.scale_max) ? +field.scale_max : 5
-  if (hi <= lo || hi - lo > 14) { lo = 1; hi = 5 }
-  return Array.from({ length: hi - lo + 1 }, (_, i) => lo + i)
-}
+// Option/grid-row editing wraps the pure helpers in fieldEditing.js and emits the result.
+function setOption(field, i, val) { emit('update-field', field.name, { options: setLine(field.options, i, val) }) }
+function addOption(field) { emit('update-field', field.name, { options: addLine(field.options, 'Option') }) }
+function removeOption(field, i) { emit('update-field', field.name, { options: removeLine(field.options, i) }) }
+function setRow(field, i, val) { emit('update-field', field.name, { grid_rows: setLine(field.grid_rows, i, val) }) }
+function addRow(field) { emit('update-field', field.name, { grid_rows: addLine(field.grid_rows, 'Row') }) }
+function removeRow(field, i) { emit('update-field', field.name, { grid_rows: removeLine(field.grid_rows, i) }) }
 
 // Conditional logic: fields ABOVE this one that can drive its visibility (saved, choice-like).
 function priorSources(field) {
@@ -127,21 +89,8 @@ function conditionValueOptions(field) {
 }
 
 // Quiz: mark correct option(s); correct_answer is stored newline-joined.
-function correctSet(field) {
-  return (field.correct_answer || '').split('\n').filter(Boolean)
-}
 function toggleCorrect(field, opt) {
-  const set = new Set(correctSet(field))
-  if (set.has(opt)) set.delete(opt)
-  else set.add(opt)
-  emit('update-field', field.name, { correct_answer: [...set].join('\n') })
-}
-function isCorrect(field, opt) {
-  return correctSet(field).includes(opt)
-}
-function quizOptions(field) {
-  if (field.field_type === 'yes_no') return ['Yes', 'No']
-  return (field.options || '').split('\n').filter(Boolean)
+  emit('update-field', field.name, { correct_answer: toggleLine(field.correct_answer, opt) })
 }
 </script>
 

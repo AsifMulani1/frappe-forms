@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Badge, Button, Dropdown, Tooltip, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
@@ -11,6 +11,7 @@ import FormSettingsDialog from '../components/builder/FormSettingsDialog.vue'
 import DevPanel from '../components/builder/DevPanel.vue'
 import { FT, hasOptions, isGrid } from '../fieldTypes'
 import { prefs, toggleDevMode } from '../data/prefs'
+import { useAutosave } from '../data/useAutosave'
 
 const props = defineProps({ slug: String })
 const router = useRouter()
@@ -20,10 +21,6 @@ const selectedId = ref(null)
 const devOpen = ref(false)
 const settingsOpen = ref(false)
 const loaded = ref(false)
-const saveState = ref('idle') // idle | saving | saved
-let saveTimer = null
-let savedTimer = null
-let pending = false // unsaved edits are queued behind the debounce
 let tmpSeq = 0
 
 async function load() {
@@ -31,6 +28,12 @@ async function load() {
   loaded.value = true
 }
 load()
+
+const { saveState, schedule: scheduleSave, flush: flushSave } = useAutosave({
+  save: persist,
+  isReady: () => loaded.value,
+  beacon: saveBeacon,
+})
 
 const selectedField = computed(() => form.fields.find((f) => f.name === selectedId.value) || null)
 
@@ -53,25 +56,9 @@ function savePayload() {
   }
 }
 
-// Debounce edits into one save once typing pauses. The "Saving…" indicator is NOT flipped here —
-// it only shows when a request actually goes out (see doSave), so it no longer flickers per keystroke.
-function scheduleSave() {
-  clearTimeout(saveTimer)
-  pending = true
-  saveTimer = setTimeout(doSave, 1000)
-}
-
-// Commit queued edits immediately — used on blur and before navigation so a field commits as soon
-// as you leave it, instead of waiting out the debounce. A no-op when nothing is pending.
-function flushSave() {
-  if (pending) return doSave()
-}
-
-async function doSave() {
-  clearTimeout(saveTimer)
-  if (!loaded.value || !pending) return
-  pending = false
-  saveState.value = 'saving'
+// Persist the whole document, then reconcile server-owned identity in place. We never reassign
+// form.fields or the meta text fields, so the inputs the user is typing in aren't torn down.
+async function persist() {
   // Snapshot the rows we're persisting (by reference, in send order) so we can map the
   // server-assigned names back onto them without clobbering edits made during the round-trip.
   const sent = form.fields.slice()
@@ -79,8 +66,6 @@ async function doSave() {
     name: form.name,
     data: JSON.stringify(savePayload()),
   })
-  // Reconcile only server-owned identity in place. We never reassign form.fields or the meta
-  // text fields, so the inputs the user is typing in are not torn down and re-rendered.
   form.name = data.name
   // A Draft's slug tracks its title, so renaming changes it. Keep the /:slug/edit URL in sync
   // (replace, not push) so the address bar stays correct and a reload still resolves the form.
@@ -99,33 +84,18 @@ async function doSave() {
     }
     local.fieldname = row.fieldname // frozen on publish; echoed back otherwise
   })
-  // A fresh edit during the round-trip re-armed the timer; don't stomp its "Saving…" state.
-  if (pending) return
-  saveState.value = 'saved'
-  clearTimeout(savedTimer)
-  savedTimer = setTimeout(() => { if (saveState.value === 'saved') saveState.value = 'idle' }, 2000)
 }
 
 // Last-ditch save when the tab is hidden/closed before the debounce fires. sendBeacon survives
 // unload (a normal fetch would be cancelled); Frappe accepts the CSRF token as a form field.
 function saveBeacon() {
-  if (!pending || !loaded.value || !form.name) return
+  if (!loaded.value || !form.name) return
   const fd = new FormData()
   fd.append('name', form.name)
   fd.append('data', JSON.stringify(savePayload()))
   if (window.csrf_token && window.csrf_token !== '{{ csrf_token }}') fd.append('csrf_token', window.csrf_token)
   navigator.sendBeacon('/api/method/forms.admin.save_form', fd)
-  pending = false
 }
-
-function onVisibility() { if (document.visibilityState === 'hidden') saveBeacon() }
-window.addEventListener('pagehide', saveBeacon)
-document.addEventListener('visibilitychange', onVisibility)
-onBeforeUnmount(() => {
-  flushSave() // leaving the builder within the SPA: commit before the component is torn down
-  window.removeEventListener('pagehide', saveBeacon)
-  document.removeEventListener('visibilitychange', onVisibility)
-})
 
 function updateMeta(patch) { Object.assign(form, patch); scheduleSave() }
 function updateField(name, patch) {

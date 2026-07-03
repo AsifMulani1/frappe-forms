@@ -7,6 +7,7 @@ import Icon from '../components/Icon.vue'
 import AppShell from '../components/AppShell.vue'
 import ShareDialog from '../components/ShareDialog.vue'
 import { prefs } from '../data/prefs'
+import { useSelection } from '../data/useSelection'
 
 const router = useRouter()
 const route = useRoute()
@@ -146,18 +147,7 @@ function rowMenu(f) {
 }
 
 // --- multi-select: bulk archive / delete across List and Grid ---
-const selected = ref(new Set())
-const selectMode = computed(() => selected.value.size > 0)
-function toggleSelect(name) {
-  const s = new Set(selected.value)
-  s.has(name) ? s.delete(name) : s.add(name)
-  selected.value = s
-}
-function clearSelection() { selected.value = new Set() }
-const allSelected = computed(() => rows.value.length > 0 && rows.value.every((f) => selected.value.has(f.name)))
-function toggleAll() {
-  selected.value = allSelected.value ? new Set() : new Set(rows.value.map((f) => f.name))
-}
+const { selected, selectMode, allSelected, toggle: toggleSelect, clear: clearSelection, toggleAll } = useSelection(rows)
 // Selection is scoped to the current view/filter — reset it when that changes.
 watch([activeView, statusTab, categoryTab], clearSelection)
 
