@@ -17,9 +17,9 @@ defineExpose({ refreshCounts: () => counts.reload() })
 
 // Header dropdown (Frappe CRM-style: brand + user identity is the menu trigger).
 const headerMenu = computed(() => [
-  { label: 'Apps', icon: 'layout-grid', onClick: () => (launcher.value = true) },
+  { label: 'Apps', icon: 'lucide-layout-grid', onClick: () => (launcher.value = true) },
   { label: prefs.dark ? 'Light mode' : 'Dark mode', icon: prefs.dark ? 'sun' : 'moon', onClick: toggleTheme },
-  { label: 'Developer mode', icon: prefs.devMode ? 'check' : 'code-2', onClick: toggleDevMode },
+  { label: 'Developer mode', icon: prefs.devMode ? 'lucide-check' : 'lucide-code', onClick: toggleDevMode },
   { label: 'Log out', icon: 'log-out', onClick: logout },
 ])
 

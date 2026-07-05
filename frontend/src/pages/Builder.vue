@@ -235,10 +235,10 @@ const menu = computed(() => [
   { label: 'Share', icon: 'user-plus', onClick: () => openShare() },
   // quick copy stays available for published forms (Share dialog has it too)
   ...(form.status === 'Published' ? [{ label: 'Copy link', icon: 'link', onClick: copyLink }] : []),
-  { label: form.is_template ? 'Unmark template' : 'Mark as template', icon: 'layout-template',
+  { label: form.is_template ? 'Unmark template' : 'Mark as template', icon: 'lucide-layout-template',
     onClick: () => updateMeta({ is_template: form.is_template ? 0 : 1 }) },
   { label: 'Archive', icon: 'archive', onClick: archive },
-  { label: 'Developer mode', icon: prefs.devMode ? 'check' : 'code-2', onClick: toggleDevMode },
+  { label: 'Developer mode', icon: prefs.devMode ? 'lucide-check' : 'lucide-code', onClick: toggleDevMode },
   { label: 'Delete', icon: 'trash-2', theme: 'red', onClick: deleteForm },
 ])
 
@@ -275,8 +275,8 @@ function openShare() { shareOpen.value = true }
           <template v-if="saveState === 'saving'"><Icon name="loader" :size="12" class="animate-spin" />Saving</template>
           <template v-else-if="saveState === 'saved'"><Icon name="check" :size="12" class="text-ink-green-600" />Saved</template>
         </span>
-        <!-- Form settings: standing gear (hidden in dev mode, where the inspector covers the same settings). -->
-        <Tooltip v-if="!prefs.devMode" text="Form settings">
+        <!-- Form settings: one home in every mode. Dev mode gets an extra Developer tab inside. -->
+        <Tooltip text="Form settings">
           <Button variant="ghost" theme="gray" @click="settingsOpen = true"><Icon name="settings" :size="16" /></Button>
         </Tooltip>
         <Tooltip text="Preview">
@@ -299,11 +299,11 @@ function openShare() { shareOpen.value = true }
       <Canvas :form="form" :selectedId="selectedId"
         @select="selectedId = $event" @update-meta="updateMeta" @update-field="updateField"
         @delete="deleteField" @duplicate="duplicateField" @move="moveField" @reorder="reorder" @add="addField" />
-      <Inspector v-if="prefs.devMode" :form="form" :field="selectedField" @update-meta="updateMeta" @update-field="updateField" @open-dev="devOpen = true" />
+      <Inspector v-if="prefs.devMode && selectedField" :form="form" :field="selectedField" @update-field="updateField" @open-dev="devOpen = true" />
       <DevPanel v-if="devOpen" :form="form" :slug="form.slug" @close="devOpen = false" />
     </div>
 
-    <FormSettingsDialog v-model="settingsOpen" :form="form" @update-meta="updateMeta" />
+    <FormSettingsDialog v-model="settingsOpen" :form="form" @update-meta="updateMeta" @open-dev="devOpen = true" />
     <ShareDialog v-model="shareOpen" :form="form" />
   </div>
   <div v-else class="flex items-center justify-center h-full text-ink-gray-5">Loading builder…</div>
