@@ -164,7 +164,7 @@ function onCover(file) {
               <span class="text-sm font-medium text-ink-gray-7">Cover image</span>
               <div v-if="form.cover_image" class="relative rounded-lg overflow-hidden border border-outline-gray-1 w-full">
                 <img :src="form.cover_image" alt="Cover" class="w-full h-[140px] object-cover" />
-                <button class="absolute top-2 right-2 w-7 h-7 rounded-full bg-surface-white/90 hover:bg-surface-white flex items-center justify-center text-ink-gray-7 shadow"
+                <button class="absolute top-2 right-2 w-7 h-7 rounded-full bg-surface-base/90 hover:bg-surface-base flex items-center justify-center text-ink-gray-7 shadow"
                         @click="set({ cover_image: '' })"><Icon name="x" :size="15" /></button>
               </div>
               <FileUploader v-else :fileTypes="['image/*']" @success="onCover">

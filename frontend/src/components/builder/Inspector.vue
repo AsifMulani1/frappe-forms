@@ -65,7 +65,7 @@ const mapOptions = computed(() => [
 </script>
 
 <template>
-  <aside class="w-[312px] h-full shrink-0 border-l border-outline-gray-1 bg-surface-white flex flex-col overflow-y-auto">
+  <aside class="w-[312px] h-full shrink-0 border-l border-outline-gray-1 bg-surface-base flex flex-col overflow-y-auto">
     <!-- FIELD SETTINGS -->
     <template v-if="field">
       <div class="px-4 py-3 border-b border-outline-gray-1 flex items-center justify-between">

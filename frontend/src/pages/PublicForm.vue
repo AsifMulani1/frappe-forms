@@ -412,7 +412,7 @@ async function submit() {
   <div class="min-h-full overflow-auto bg-surface-gray-1" :data-accent="form?.accent || 'blue'">
     <!-- builder preview: minimal floating indicator, read-only, no submission -->
     <div v-if="isPreview" title="Preview — responses aren’t saved"
-         class="fixed bottom-5 right-5 z-30 flex items-center justify-center h-8 w-8 rounded-full bg-surface-white text-ink-gray-5 border border-outline-gray-2 shadow-sm">
+         class="fixed bottom-5 right-5 z-30 flex items-center justify-center h-8 w-8 rounded-full bg-surface-base text-ink-gray-5 border border-outline-gray-2 shadow-sm">
       <Icon name="eye" :size="14" />
     </div>
 

@@ -202,7 +202,7 @@ function openShare(f) {
 
 <template>
   <AppShell ref="shell">
-    <div class="flex-1 overflow-auto bg-surface-white">
+    <div class="flex-1 overflow-auto bg-surface-base">
       <div class="px-5 pt-10 pb-12 max-w-[960px] mx-auto">
         <div class="flex items-start justify-between gap-4 mb-7">
           <div class="flex flex-col gap-1.5 min-w-0">
@@ -256,7 +256,7 @@ function openShare(f) {
         </div>
 
         <!-- empty state -->
-        <div v-else-if="!rows.length" class="flex flex-col items-center justify-center text-center border border-outline-gray-2 rounded-[10px] bg-surface-white py-16">
+        <div v-else-if="!rows.length" class="flex flex-col items-center justify-center text-center border border-outline-gray-2 rounded-[10px] bg-surface-base py-16">
           <Icon :name="search ? 'search' : isArchived ? 'archive' : isTemplates ? 'layout-template' : 'clipboard-list'" :size="26" class="text-ink-gray-4" />
           <template v-if="search">
             <p class="text-base text-ink-gray-7 mt-3">No forms match “{{ search }}”</p>
@@ -275,7 +275,7 @@ function openShare(f) {
         <div v-else-if="isTemplates" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-8">
           <!-- blank form: leads the grid, caption-less so it aligns with the thumbnails -->
           <button type="button" @click="newForm"
-                  class="self-start h-[256px] rounded-[10px] border border-dashed border-outline-gray-3 bg-surface-white flex flex-col items-center justify-center gap-3 text-ink-gray-5 transition-colors hover:border-ink-gray-4 hover:text-ink-gray-7 hover:bg-surface-gray-1">
+                  class="self-start h-[256px] rounded-[10px] border border-dashed border-outline-gray-3 bg-surface-base flex flex-col items-center justify-center gap-3 text-ink-gray-5 transition-colors hover:border-ink-gray-4 hover:text-ink-gray-7 hover:bg-surface-gray-1">
             <Icon name="plus" :size="26" />
             <span class="text-base">Blank form</span>
           </button>
@@ -285,7 +285,7 @@ function openShare(f) {
                @click="useTemplate(f)">
             <!-- thumbnail: neutral document preview (Espresso, no accent bands) -->
             <div class="relative h-[256px] rounded-[10px] overflow-hidden border border-outline-gray-1 bg-surface-gray-2 shadow-sm transition-shadow group-hover:shadow-md">
-              <div class="absolute inset-x-3.5 top-7 bottom-0 bg-surface-white rounded-t-[8px] shadow-[0_-1px_8px_rgba(0,0,0,0.06)] px-4 pt-3.5 flex flex-col gap-2.5 overflow-hidden">
+              <div class="absolute inset-x-3.5 top-7 bottom-0 bg-surface-base rounded-t-[8px] shadow-[0_-1px_8px_rgba(0,0,0,0.06)] px-4 pt-3.5 flex flex-col gap-2.5 overflow-hidden">
                 <div class="text-sm font-semibold text-ink-gray-9 pb-2.5 border-b border-outline-gray-1 truncate">{{ f.title }}</div>
                 <div v-for="(fld, i) in (f.preview || []).slice(0, 3)" :key="i" class="flex flex-col gap-1">
                   <span class="text-[11px] font-medium text-ink-gray-7 truncate">
@@ -307,7 +307,7 @@ function openShare(f) {
         </div>
 
         <!-- list view (columns adapt to the active filter) -->
-        <div v-else-if="view === 'list'" class="border border-outline-gray-1 rounded-[10px] overflow-hidden bg-surface-white">
+        <div v-else-if="view === 'list'" class="border border-outline-gray-1 rounded-[10px] overflow-hidden bg-surface-base">
           <div class="flex items-center gap-3 px-4 py-2.5 border-b border-outline-gray-1 bg-surface-gray-1 text-xs text-ink-gray-5">
             <span class="w-4 flex items-center justify-center" @click.stop>
               <Checkbox :modelValue="allSelected" @update:modelValue="toggleAll" />
@@ -360,7 +360,7 @@ function openShare(f) {
         <!-- grid view: minimal cards — status as a dot, one quiet subtitle, actions on hover -->
         <div v-else class="grid grid-cols-2 gap-4">
           <div v-for="f in rows" :key="f.name"
-               class="group relative border rounded-[12px] px-5 py-[18px] bg-surface-white cursor-pointer transition-colors"
+               class="group relative border rounded-[12px] px-5 py-[18px] bg-surface-base cursor-pointer transition-colors"
                :class="selected.has(f.name) ? 'border-outline-gray-4' : 'border-outline-gray-1 hover:border-outline-gray-2'"
                @click="router.push(`/${f.slug}/edit`)">
             <div class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity" @click.stop>

@@ -95,7 +95,7 @@ function toggleCorrect(field, opt) {
 </script>
 
 <template>
-  <div class="flex-1 overflow-auto bg-surface-white">
+  <div class="flex-1 overflow-auto bg-surface-base">
     <div ref="canvasEl" class="max-w-[720px] mx-auto px-3 pt-7 pb-20 sm:px-6">
       <!-- form header card -->
       <div class="public-card overflow-hidden mb-4 cursor-pointer"
@@ -359,7 +359,7 @@ function toggleCorrect(field, opt) {
       </template>
 
       <!-- empty state -->
-      <div v-if="!form.fields.length" class="flex flex-col items-center justify-center text-center border border-dashed border-outline-gray-2 rounded-[10px] bg-surface-white py-12">
+      <div v-if="!form.fields.length" class="flex flex-col items-center justify-center text-center border border-dashed border-outline-gray-2 rounded-[10px] bg-surface-base py-12">
         <Icon name="plus-circle" :size="26" class="text-ink-gray-4" />
         <span class="text-base text-ink-gray-7 mt-3">No fields yet</span>
         <span class="text-sm text-ink-gray-5 mt-1">Add your first field to get started.</span>

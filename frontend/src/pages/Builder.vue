@@ -21,11 +21,18 @@ const selectedId = ref(null)
 const devOpen = ref(false)
 const settingsOpen = ref(false)
 const loaded = ref(false)
+const notFound = ref(false)
 let tmpSeq = 0
 
 async function load() {
-  Object.assign(form, await call('forms.admin.get_form', { slug: props.slug }))
-  loaded.value = true
+  try {
+    Object.assign(form, await call('forms.admin.get_form', { slug: props.slug }))
+    loaded.value = true
+  } catch (e) {
+    // Missing/renamed slug (stale link, deleted form): show a not-found state instead of
+    // hanging on "Loading builder…" with an unhandled rejection.
+    notFound.value = true
+  }
 }
 load()
 
@@ -249,7 +256,7 @@ function openShare() { shareOpen.value = true }
 
 <template>
   <div v-if="loaded" class="flex flex-col h-full w-full" :data-accent="form.accent" @focusout="flushSave">
-    <div class="h-[48px] border-b border-outline-gray-1 bg-surface-white flex items-center px-3.5 shrink-0 relative">
+    <div class="h-[48px] border-b border-outline-gray-1 bg-surface-base flex items-center px-3.5 shrink-0 relative">
       <!-- left: back + title + a quiet status dot -->
       <div class="flex items-center gap-2.5 min-w-0">
         <button class="flex items-center gap-1.5 px-2 h-8 rounded-md hover:bg-surface-gray-2 text-ink-gray-7 shrink-0 transition-colors" title="Back to all forms" @click="router.push('/')">
@@ -305,6 +312,11 @@ function openShare() { shareOpen.value = true }
 
     <FormSettingsDialog v-model="settingsOpen" :form="form" @update-meta="updateMeta" @open-dev="devOpen = true" />
     <ShareDialog v-model="shareOpen" :form="form" />
+  </div>
+  <div v-else-if="notFound" class="flex flex-col items-center justify-center h-full gap-3 text-center">
+    <Icon name="file-question" :size="28" class="text-ink-gray-4" />
+    <p class="text-ink-gray-7">This form doesn't exist. It may have been deleted or renamed.</p>
+    <Button variant="solid" theme="gray" @click="router.push('/')">Back to all forms</Button>
   </div>
   <div v-else class="flex items-center justify-center h-full text-ink-gray-5">Loading builder…</div>
 </template>

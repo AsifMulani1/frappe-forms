@@ -63,7 +63,7 @@ async function exportCsv() {
 <template>
   <div class="flex flex-col h-full w-full" :data-accent="meta.data?.accent || 'blue'">
     <!-- topbar -->
-    <div class="h-[48px] border-b border-outline-gray-1 bg-surface-white flex items-center px-3.5 shrink-0 relative">
+    <div class="h-[48px] border-b border-outline-gray-1 bg-surface-base flex items-center px-3.5 shrink-0 relative">
       <!-- left: back + title + status dot (matches the builder bar) -->
       <div class="flex items-center gap-2.5 min-w-0">
         <button class="flex items-center gap-1.5 px-2 h-8 rounded-md hover:bg-surface-gray-2 text-ink-gray-7 shrink-0 transition-colors" title="Back to all forms" @click="router.push('/')">
@@ -87,7 +87,7 @@ async function exportCsv() {
       </div>
     </div>
 
-    <div class="flex-1 overflow-auto relative" :class="sub === 'individual' ? 'bg-surface-white' : 'bg-surface-gray-1'">
+    <div class="flex-1 overflow-auto relative" :class="sub === 'individual' ? 'bg-surface-base' : 'bg-surface-gray-1'">
       <div class="px-5 pt-6 pb-14 max-w-[940px] mx-auto">
         <div class="flex items-center justify-between mb-4">
           <div class="flex gap-5 border-b border-outline-gray-1">
@@ -135,14 +135,14 @@ async function exportCsv() {
               <span class="text-[26px] font-medium text-ink-gray-9">{{ summary.data.rating ? summary.data.rating.average : '-' }}</span>
             </div>
           </div>
-          <div v-else class="border border-outline-gray-1 rounded-md bg-surface-white text-center py-12 px-4">
+          <div v-else class="border border-outline-gray-1 rounded-md bg-surface-base text-center py-12 px-4">
             <Icon name="chart-no-axes-column" :size="22" class="text-ink-gray-4 mx-auto" />
             <p class="text-sm text-ink-gray-7 mt-2">Couldn't load the summary.</p>
             <Button class="mx-auto mt-3" variant="subtle" theme="gray" @click="summary.fetch()">Try again</Button>
           </div>
 
           <!-- choice charts -->
-          <div v-for="c in (summary.data?.charts || [])" :key="c.fieldname" class="border border-outline-gray-1 rounded-md bg-surface-white p-[18px]">
+          <div v-for="c in (summary.data?.charts || [])" :key="c.fieldname" class="border border-outline-gray-1 rounded-md bg-surface-base p-[18px]">
             <span class="text-sm font-medium text-ink-gray-9">{{ c.label }}</span>
             <div class="flex flex-col gap-3 mt-4">
               <div v-for="d in c.data" :key="d.label" class="flex flex-col gap-1.5">
@@ -156,7 +156,7 @@ async function exportCsv() {
           </div>
 
           <!-- rating breakdown -->
-          <div v-if="summary.data?.rating" class="border border-outline-gray-1 rounded-md bg-surface-white p-[18px]">
+          <div v-if="summary.data?.rating" class="border border-outline-gray-1 rounded-md bg-surface-base p-[18px]">
             <span class="text-sm font-medium text-ink-gray-9">{{ summary.data.rating.label }}</span>
             <div class="flex items-center gap-3 mt-4">
               <span class="text-[38px] font-medium text-ink-gray-9">{{ summary.data.rating.average }}</span>
@@ -174,7 +174,7 @@ async function exportCsv() {
         </div>
 
         <!-- INDIVIDUAL -->
-        <div v-else class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-white">
+        <div v-else class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-base">
           <div class="flex items-center gap-3 px-4 h-9 border-b border-outline-gray-1 bg-surface-gray-1 text-xs text-ink-gray-5">
             <span class="flex-1">Respondent</span>
             <span v-if="subs.data?.has_workflow" class="w-[100px]">State</span>
@@ -227,7 +227,7 @@ async function exportCsv() {
 
           <div class="flex-1 overflow-y-auto p-4">
             <span class="text-[10px] text-ink-gray-5 font-mono uppercase tracking-wider">Record fields</span>
-            <div class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-white mt-2">
+            <div class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-base mt-2">
               <div class="flex items-center justify-between px-3 py-2.5 border-t border-outline-gray-1 first:border-t-0">
                 <span class="text-[12px] text-ink-gray-5 font-mono">name</span>
                 <span class="text-sm text-ink-gray-9 truncate max-w-[220px] text-right">{{ drawer.name }}</span>

@@ -21,7 +21,7 @@ const emit = defineEmits(['pick'])
       <slot name="trigger" :toggle="togglePopover" :isOpen="isOpen" />
     </template>
     <template #body="{ close }">
-      <div class="w-[300px] max-h-[min(28rem,var(--reka-popover-content-available-height))] overflow-y-auto rounded-xl border border-outline-gray-1 bg-surface-white shadow-2xl p-2 mt-1.5">
+      <div class="w-[300px] max-h-[min(28rem,var(--reka-popover-content-available-height))] overflow-y-auto rounded-xl border border-outline-gray-1 bg-surface-base shadow-2xl p-2 mt-1.5">
         <div class="px-1.5 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-gray-5">{{ title }}</div>
         <div class="grid grid-cols-2 gap-0.5">
           <button v-for="t in FIELD_TYPES" :key="t.id" type="button"

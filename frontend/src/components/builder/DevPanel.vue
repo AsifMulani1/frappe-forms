@@ -107,7 +107,7 @@ const perms = computed(() => preview.data?.permissions || [])
 
       <!-- GUARDRAILS -->
       <template v-else>
-        <div class="border border-outline-gray-2 rounded-md bg-surface-white p-3.5 mb-2.5">
+        <div class="border border-outline-gray-2 rounded-md bg-surface-base p-3.5 mb-2.5">
           <div class="flex items-center gap-2 mb-1.5"><Icon name="shield" :size="15" class="text-ink-gray-7" /><span class="text-sm font-medium text-ink-gray-9">Guest submissions are governed</span></div>
           <p class="text-xs text-ink-gray-6 leading-relaxed">The public form posts through one whitelisted, rate-limited endpoint that validates every field server-side and inserts with <span class="font-mono">ignore_permissions</span> - guests never get broad create perms.</p>
           <div class="border border-outline-gray-1 rounded bg-surface-gray-1 font-mono text-[11px] p-2 mt-2" v-if="!linked">
@@ -117,7 +117,7 @@ const perms = computed(() => preview.data?.permissions || [])
             </div>
           </div>
         </div>
-        <div class="border border-outline-gray-2 rounded-md bg-surface-white p-3.5 mb-2.5">
+        <div class="border border-outline-gray-2 rounded-md bg-surface-base p-3.5 mb-2.5">
           <div class="flex items-center gap-2 mb-1.5"><Icon name="lock" :size="15" class="text-ink-gray-7" /><span class="text-sm font-medium text-ink-gray-9">Field names freeze at publish</span></div>
           <p class="text-xs text-ink-gray-6 leading-relaxed">A column name is derived from its label only until you publish; after that it’s frozen, so relabeling never renames the column or orphans stored answers.</p>
           <div class="flex flex-wrap gap-1.5 mt-2">
@@ -126,11 +126,11 @@ const perms = computed(() => preview.data?.permissions || [])
             </span>
           </div>
         </div>
-        <div class="border border-outline-gray-2 rounded-md bg-surface-white p-3.5 mb-2.5">
+        <div class="border border-outline-gray-2 rounded-md bg-surface-base p-3.5 mb-2.5">
           <div class="flex items-center gap-2 mb-1.5"><Icon name="git-merge" :size="15" class="text-ink-gray-7" /><span class="text-sm font-medium text-ink-gray-9">Edits are additive-only</span></div>
           <p class="text-xs text-ink-gray-6 leading-relaxed">New fields are added as nullable columns; removed fields are hidden, not dropped - historical submissions keep their data.</p>
         </div>
-        <div class="border border-outline-gray-2 rounded-md bg-surface-white p-3.5">
+        <div class="border border-outline-gray-2 rounded-md bg-surface-base p-3.5">
           <div class="flex items-center gap-2 mb-1.5"><Icon name="table" :size="15" class="text-ink-gray-7" /><span class="text-sm font-medium text-ink-gray-9">Checkboxes become a child table</span></div>
           <p class="text-xs text-ink-gray-6 leading-relaxed">A multi-select compiles to <span class="font-mono">Table MultiSelect</span> backed by an option master + child link table, so each selected option is its own governed row.</p>
         </div>

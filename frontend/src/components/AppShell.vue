@@ -49,7 +49,7 @@ const sections = computed(() => [{
 
 <template>
   <div class="flex h-full w-full">
-    <Sidebar v-model:collapsed="prefs.navCollapsed" :sections="sections" class="!bg-surface-white">
+    <Sidebar v-model:collapsed="prefs.navCollapsed" :sections="sections" class="!bg-surface-base">
       <!-- header: brand + user identity is the menu (Frappe CRM pattern), then search -->
       <template #header>
         <Dropdown :options="headerMenu" placement="bottom-start">

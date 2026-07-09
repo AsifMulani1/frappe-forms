@@ -6,7 +6,7 @@ defineEmits(['add'])
 </script>
 
 <template>
-  <aside class="w-[248px] h-full shrink-0 border-r border-outline-gray-1 bg-surface-white flex flex-col overflow-y-auto">
+  <aside class="w-[248px] h-full shrink-0 border-r border-outline-gray-1 bg-surface-base flex flex-col overflow-y-auto">
     <div class="px-4 py-3 border-b border-outline-gray-1">
       <span class="text-xs text-ink-gray-5">Add a field</span>
     </div>

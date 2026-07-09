@@ -115,7 +115,7 @@ body {
   user-select: none;
 }
 .segmented .seg-btn.active {
-  background: var(--surface-white);
+  background: var(--surface-base);
   color: var(--ink-gray-9);
   box-shadow: var(--shadow-sm);
 }
@@ -194,7 +194,7 @@ body {
 
 /* ---- question card (builder canvas) ---- */
 .q-card {
-  background: var(--surface-white);
+  background: var(--surface-base);
   border: 1px solid var(--outline-gray-1);
   border-radius: 10px;
   padding: 16px 14px;
@@ -245,7 +245,7 @@ body {
   height: 22px;
   border-radius: 999px;
   border: 1px solid var(--outline-gray-2);
-  background: var(--surface-white);
+  background: var(--surface-base);
   color: var(--ink-gray-6);
   display: flex;
   align-items: center;
@@ -259,7 +259,7 @@ body {
 }
 .insert-btn:hover {
   background: var(--ink-gray-9);
-  color: var(--surface-white);
+  color: var(--surface-base);
   border-color: var(--ink-gray-9);
 }
 .q-card.selected {
@@ -341,7 +341,7 @@ body {
   height: 32px;
   border: 1px solid var(--outline-gray-2);
   border-radius: 8px;
-  background: var(--surface-white);
+  background: var(--surface-base);
   padding: 0 10px;
   color: var(--ink-gray-8);
   font-size: 13px;
@@ -362,7 +362,7 @@ body {
   right: 0;
   bottom: 0;
   width: 460px;
-  background: var(--surface-white);
+  background: var(--surface-base);
   border-left: 1px solid var(--outline-gray-2);
   box-shadow: var(--shadow-xl);
   z-index: 60;
@@ -398,11 +398,11 @@ body {
 
 /* Share dialog: white people-picker input (frappe-ui Autocomplete defaults to a grey fill) */
 .ac-white button {
-  background: var(--surface-white);
+  background: var(--surface-base);
   border-color: var(--outline-gray-2);
 }
 .ac-white button:hover {
-  background: var(--surface-white);
+  background: var(--surface-base);
 }
 
 /* ---- respondent (public) view ---- */
@@ -414,7 +414,7 @@ body {
   font-size: 16px;
 }
 .public-card {
-  background: var(--surface-white);
+  background: var(--surface-base);
   border: 1px solid var(--outline-gray-1);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
@@ -424,7 +424,7 @@ body {
   height: 38px;
   border: 1px solid var(--outline-gray-2);
   border-radius: 8px;
-  background: var(--surface-white);
+  background: var(--surface-base);
   padding: 0 11px;
   font-size: 14px;
   color: var(--ink-gray-9);
@@ -519,7 +519,7 @@ textarea.r-input {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  background: var(--surface-white);
+  background: var(--surface-base);
 }
 .bar-track {
   height: 10px;
