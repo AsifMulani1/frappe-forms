@@ -21,6 +21,7 @@ from forms.compile.naming import (
 	scrub_fieldname,
 	title_case,
 )
+from forms.compile.validate import validate_conditional_logic
 
 # DocField attributes we reconcile onto an already-published column on re-publish. Fieldtype is
 # deliberately excluded — changing a live column's type risks data loss / DDL failures — except the
@@ -172,6 +173,9 @@ def publish(form_name: str):
 			title="Name your form",
 		)
 
+	# Fail fast on a broken conditional-logic graph before we write any schema.
+	validate_conditional_logic(form)
+
 	freeze_fieldnames(form)
 	form.reload()
 
@@ -193,6 +197,7 @@ def compile_preview(form_name: str) -> dict:
 	if not frappe.has_permission("FF Form", "read", doc=form_name):
 		frappe.throw("You don't have access to this form.", frappe.PermissionError)
 	form = frappe.get_doc("FF Form", form_name)
+	validate_conditional_logic(form)
 
 	if form.storage_mode == "Linked":
 		fields = []

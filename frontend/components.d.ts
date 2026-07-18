@@ -20,10 +20,14 @@ declare module 'vue' {
     FormSettingsDialog: typeof import('./src/components/builder/FormSettingsDialog.vue')['default']
     Icon: typeof import('./src/components/Icon.vue')['default']
     Inspector: typeof import('./src/components/builder/Inspector.vue')['default']
+    PageNav: typeof import('./src/components/public/PageNav.vue')['default']
+    ProgressBar: typeof import('./src/components/public/ProgressBar.vue')['default']
     RespondentField: typeof import('./src/components/RespondentField.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     ShareDialog: typeof import('./src/components/ShareDialog.vue')['default']
     SignaturePad: typeof import('./src/components/SignaturePad.vue')['default']
+    SubmissionsList: typeof import('./src/components/public/SubmissionsList.vue')['default']
+    SuccessScreen: typeof import('./src/components/public/SuccessScreen.vue')['default']
   }
 }

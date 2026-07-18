@@ -12,6 +12,7 @@ from forms.compile.naming import (
 	GRID_TYPES,
 	LAYOUT_TYPES,
 	_dedupe,
+	cap_doctype_name,
 	newline_options,
 	resolve_fieldname,
 	title_case,
@@ -24,22 +25,19 @@ def _child_doctype_name(form, fieldname: str) -> str:
 	Frappe DocType names are capped at 61 chars, so trim the parent prefix if needed.
 	"""
 	parent = form.doctype_name or title_case(form.slug)
-	name = f"{parent} {title_case(fieldname)} Item"
-	return name[:61].strip()
+	return cap_doctype_name(f"{parent} {title_case(fieldname)} Item")
 
 
 def _option_master_name(form, fieldname: str) -> str:
 	"""Master DocType holding the allowed option values for a checkboxes field."""
 	parent = form.doctype_name or title_case(form.slug)
-	name = f"{parent} {title_case(fieldname)} Option"
-	return name[:61].strip()
+	return cap_doctype_name(f"{parent} {title_case(fieldname)} Option")
 
 
 def _grid_doctype_name(form, fieldname: str) -> str:
 	"""Child (table) DocType name for a grid field - one row per answered grid-row."""
 	parent = form.doctype_name or title_case(form.slug)
-	name = f"{parent} {title_case(fieldname)} Grid"
-	return name[:61].strip()
+	return cap_doctype_name(f"{parent} {title_case(fieldname)} Grid")
 
 
 def _ensure_grid_doctype(name: str):

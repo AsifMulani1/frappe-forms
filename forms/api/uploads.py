@@ -9,13 +9,17 @@ from frappe.rate_limiter import rate_limit
 
 from forms.api.render import _published_form
 from forms.compile import resolve_fieldname
-
-ALLOWED_UPLOAD_EXT = {"png", "jpg", "jpeg", "gif", "pdf", "doc", "docx", "xls", "xlsx", "csv", "txt"}
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+from forms.config import (
+	ALLOWED_UPLOAD_EXT,
+	MAX_UPLOAD_BYTES,
+	ORPHAN_UPLOAD_GRACE_HOURS,
+	UPLOAD_RATE_LIMIT,
+	RATE_WINDOW_HOUR,
+)
 
 
 @frappe.whitelist(allow_guest=True)
-@rate_limit(key="slug", limit=30, seconds=60 * 60)
+@rate_limit(key="slug", limit=UPLOAD_RATE_LIMIT, seconds=RATE_WINDOW_HOUR)
 def upload_submission_file(slug: str, fieldname: str):
 	"""Guest-safe upload for a published form's file_upload field. Saves a PRIVATE File (validated
 	for size + extension) and returns its url; the file is linked to the record on submit. We never
@@ -67,7 +71,7 @@ def cleanup_orphan_uploads():
 		filters={
 			"attached_to_doctype": "FF Form",
 			"is_private": 1,
-			"creation": ("<", frappe.utils.add_to_date(None, hours=-2)),
+			"creation": ("<", frappe.utils.add_to_date(None, hours=-ORPHAN_UPLOAD_GRACE_HOURS)),
 		},
 		pluck="name",
 		limit=500,

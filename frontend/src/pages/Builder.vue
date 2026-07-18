@@ -110,6 +110,11 @@ function updateField(name, patch) {
   if (f) Object.assign(f, patch)
   scheduleSave()
 }
+// A stable client-side key so a brand-new (or duplicated) field can be referenced by conditional
+// logic immediately, before the first autosave round-trips. save_form persists a client key as-is
+// and the controller only fills EMPTY keys, so these survive untouched.
+function newKey() { return 'k' + Math.random().toString(36).slice(2, 12) }
+
 function addField(typeId, index) {
   const t = FT[typeId]
   const f = {
@@ -117,7 +122,7 @@ function addField(typeId, index) {
     reqd: 0, help_text: '',
     options: isGrid(typeId) ? 'Column 1\nColumn 2\nColumn 3' : hasOptions(typeId) ? 'Option 1\nOption 2\nOption 3' : '',
     grid_rows: isGrid(typeId) ? 'Row 1\nRow 2' : '',
-    mapped_field: '', fieldname: '', field_key: '',
+    mapped_field: '', fieldname: '', field_key: newKey(),
     has_other: 0, shuffle_options: 0, min_value: '', max_value: '', max_length: 0,
     validation_pattern: '', error_message: '', scale_min: 1, scale_max: 5, min_label: '', max_label: '',
     condition_field: '', condition_operator: 'equals', condition_value: '', points: 0, correct_answer: '',
@@ -149,7 +154,33 @@ function deleteField(name) {
 function duplicateField(name) {
   const i = form.fields.findIndex((f) => f.name === name)
   if (i < 0) return
-  form.fields.splice(i + 1, 0, { ...form.fields[i], name: `tmp-${++tmpSeq}`, fieldname: '', field_key: '' })
+  // Fresh identity + a new key so the copy is an independent conditional-logic source; it keeps its
+  // own condition_field (it stays gated on the same controller as the original).
+  const copy = { ...form.fields[i], name: `tmp-${++tmpSeq}`, fieldname: '', field_key: newKey() }
+  form.fields.splice(i + 1, 0, copy)
+  selectedId.value = copy.name // select + (Canvas scrolls it into view) so the new card is obvious
+  scheduleSave()
+}
+
+// Bulk operations over a set of selected field names (see Canvas multi-select).
+function deleteManyFields(names) {
+  const set = new Set(names)
+  form.fields = form.fields.filter((f) => !set.has(f.name))
+  if (set.has(selectedId.value)) selectedId.value = null
+  scheduleSave()
+}
+function duplicateManyFields(names) {
+  const set = new Set(names)
+  // Duplicate in document order, each copy inserted right after its source.
+  for (const src of form.fields.filter((f) => set.has(f.name))) {
+    const i = form.fields.findIndex((f) => f.name === src.name)
+    form.fields.splice(i + 1, 0, { ...src, name: `tmp-${++tmpSeq}`, fieldname: '', field_key: newKey() })
+  }
+  scheduleSave()
+}
+function setRequiredManyFields(names, reqd) {
+  const set = new Set(names)
+  for (const f of form.fields) if (set.has(f.name)) f.reqd = reqd
   scheduleSave()
 }
 function moveField(name, dir) {
@@ -305,7 +336,9 @@ function openShare() { shareOpen.value = true }
     <div class="flex flex-1 relative min-h-0">
       <Canvas :form="form" :selectedId="selectedId"
         @select="selectedId = $event" @update-meta="updateMeta" @update-field="updateField"
-        @delete="deleteField" @duplicate="duplicateField" @move="moveField" @reorder="reorder" @add="addField" />
+        @delete="deleteField" @duplicate="duplicateField" @move="moveField" @reorder="reorder" @add="addField"
+        @delete-many="deleteManyFields" @duplicate-many="duplicateManyFields"
+        @required-many="setRequiredManyFields($event.names, $event.reqd)" />
       <Inspector v-if="prefs.devMode && selectedField" :form="form" :field="selectedField" @update-field="updateField" @open-dev="devOpen = true" />
       <DevPanel v-if="devOpen" :form="form" :slug="form.slug" @close="devOpen = false" />
     </div>

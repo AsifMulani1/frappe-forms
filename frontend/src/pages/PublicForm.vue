@@ -4,8 +4,13 @@ import { useRoute } from 'vue-router'
 import { Button, FormControl, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import { conditionMet } from '../fieldTypes'
+import { validateField } from '../data/validate'
 import Icon from '../components/Icon.vue'
 import RespondentField from '../components/RespondentField.vue'
+import ProgressBar from '../components/public/ProgressBar.vue'
+import SubmissionsList from '../components/public/SubmissionsList.vue'
+import PageNav from '../components/public/PageNav.vue'
+import SuccessScreen from '../components/public/SuccessScreen.vue'
 
 const props = defineProps({ slug: String })
 const route = useRoute()
@@ -116,7 +121,7 @@ const isLastPage = computed(() => currentPage.value >= pages.value.length - 1)
 function validatePage(idx) {
   let ok = true
   for (const f of visibleFields(pages.value[idx]?.fields)) {
-    const res = validateField(f)
+    const res = validateField(f, answers[f.fieldname])
     if (res) { errors[f.fieldname] = res; ok = false }
   }
   return ok
@@ -227,11 +232,6 @@ function deleteSub(name) {
     },
   })
 }
-function fmtDate(dt) {
-  if (!dt) return ''
-  try { return new Date(dt.replace(' ', 'T')).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) } catch { return dt }
-}
-
 const editUrl = computed(() => {
   const base = `${window.location.origin}/forms/f/${props.slug}`
   if (editToken.value) return `${base}?edit=${editToken.value}`
@@ -269,6 +269,13 @@ function resetForm() {
   respondentEmail.value = form.value?.user_email || ''
   emailError.value = false
   submitResult.value = null
+}
+// "Submit another response": clear the done/edit state and start a fresh blank form.
+function submitAnother() {
+  done.value = null
+  editToken.value = null
+  recordName.value = null
+  resetForm()
 }
 // Email is collected on the first page; validate it there.
 function emailOk() {
@@ -336,31 +343,6 @@ function toggleGridCb(f, row, col) {
   if (arr.length) cur[row] = arr
   else delete cur[row]
   setVal(f.fieldname, cur)
-}
-
-// Mirror the server's validation client-side: false = ok, true = required, string = specific message.
-function validateField(f) {
-  const v = answers[f.fieldname]
-  const empty = Array.isArray(v) ? !v.length
-    : v && typeof v === 'object' ? !Object.keys(v).length
-    : v === undefined || v === '' || v === null
-  if (empty) return !!f.reqd
-  if (f.field_type === 'number') {
-    const n = Number(v)
-    const lo = f.min_value !== '' && f.min_value != null ? Number(f.min_value) : null
-    const hi = f.max_value !== '' && f.max_value != null ? Number(f.max_value) : null
-    if (lo != null && n < lo) return f.error_message || `Must be at least ${lo}.`
-    if (hi != null && n > hi) return f.error_message || `Must be at most ${hi}.`
-  }
-  if (['short_answer', 'paragraph', 'address'].includes(f.field_type)) {
-    if (f.max_length && String(v).length > f.max_length) return f.error_message || `Must be at most ${f.max_length} characters.`
-    if (f.validation_pattern) {
-      let ok = true
-      try { ok = new RegExp(`^(?:${f.validation_pattern})$`).test(String(v)) } catch { ok = true }
-      if (!ok) return f.error_message || 'Not in the expected format.'
-    }
-  }
-  return false
 }
 
 async function submit() {
@@ -431,9 +413,7 @@ async function submit() {
 
     <template v-else-if="form">
       <!-- progress -->
-      <div v-if="form.show_progress !== 0" class="h-[3px] bg-surface-gray-2 sticky top-0 z-10">
-        <div class="h-full transition-all" :style="{ width: `${done ? 100 : pct}%`, background: 'var(--accent)' }" />
-      </div>
+      <ProgressBar :show="form.show_progress !== 0" :pct="pct" :done="!!done" />
 
       <div class="max-w-[600px] mx-auto px-3 pt-8 pb-16 sm:px-5">
         <template v-if="!done">
@@ -445,23 +425,7 @@ async function submit() {
           </div>
 
           <!-- the signed-in respondent's own past submissions -->
-          <div v-if="mySubs.length" class="public-card p-4 mb-4 sm:p-5">
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="text-sm font-medium text-ink-gray-9">Your responses</span>
-              <span class="text-xs text-ink-gray-5">{{ mySubs.length }}</span>
-            </div>
-            <div class="flex flex-col divide-y divide-outline-gray-1">
-              <div v-for="s in mySubs" :key="s.name" class="flex items-center gap-3 py-2.5">
-                <div class="flex flex-col min-w-0 flex-1">
-                  <span class="text-sm text-ink-gray-8 truncate">{{ s.label }}</span>
-                  <span class="text-[11px] text-ink-gray-5">{{ fmtDate(s.creation) }}</span>
-                </div>
-                <a v-if="s.edit_param && mySubsMeta.can_edit" :href="`/forms/f/${slug}?${s.edit_param}`"
-                   class="text-sm text-ink-gray-7 hover:text-ink-gray-9">Edit</a>
-                <button v-if="mySubsMeta.can_delete" type="button" class="text-sm text-ink-red-500 hover:text-ink-red-600" @click="deleteSub(s.name)">Delete</button>
-              </div>
-            </div>
-          </div>
+          <SubmissionsList :subs="mySubs" :meta="mySubsMeta" :slug="slug" @delete="deleteSub" />
 
           <div class="public-card p-5 sm:p-7">
             <!-- honeypot -->
@@ -503,15 +467,9 @@ async function submit() {
               @upload="uploadFile(f, $event)"
               @clearFile="clearFile(f)" />
 
-            <div class="flex items-center justify-between border-t border-outline-gray-1 pt-5 mt-1">
-              <div class="flex items-center gap-2">
-                <Button v-if="multiPage && currentPage > 0" variant="outline" theme="gray" size="lg" @click="prevPage">Back</Button>
-                <Button v-if="!isLastPage" variant="solid" theme="gray" size="lg" @click="nextPage">Next</Button>
-                <Button v-else variant="solid" theme="gray" size="lg" :loading="submitting" @click="submit">{{ editing ? 'Update' : 'Submit' }}</Button>
-              </div>
-              <span v-if="multiPage" class="text-sm text-ink-gray-5">Page {{ currentPage + 1 }} of {{ pages.length }}</span>
-              <button v-else class="text-sm text-ink-gray-5" @click="resetForm">Clear form</button>
-            </div>
+            <PageNav :multiPage="multiPage" :currentPage="currentPage" :isLastPage="isLastPage"
+                     :submitting="submitting" :editing="editing" :pageCount="pages.length"
+                     @prev="prevPage" @next="nextPage" @submit="submit" @reset="resetForm" />
           </div>
 
           <div class="flex flex-col gap-0.5 mt-4 px-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
@@ -521,37 +479,9 @@ async function submit() {
         </template>
 
         <!-- success -->
-        <div v-else class="public-card text-center px-5 py-12 sm:px-8">
-          <span class="w-[52px] h-[52px] rounded-[14px] bg-surface-green-2 flex items-center justify-center mx-auto text-green-600">
-            <Icon name="check" :size="26" />
-          </span>
-          <h2 class="text-xl font-semibold text-ink-gray-9 mt-4">{{ editing ? 'Response updated' : 'Response received' }}</h2>
-
-          <!-- quiz score -->
-          <div v-if="submitResult && submitResult.show_score && submitResult.max_score" class="mt-4 mx-auto inline-flex flex-col items-center rounded-xl bg-surface-gray-1 px-6 py-4">
-            <span class="text-xs text-ink-gray-5 uppercase tracking-wide">Your score</span>
-            <span class="text-2xl font-semibold text-ink-gray-9 mt-1">{{ +submitResult.score.toFixed(2) }} / {{ +submitResult.max_score.toFixed(2) }}</span>
-          </div>
-
-          <p v-if="redirecting" class="text-base text-ink-gray-6 mt-2 flex items-center justify-center gap-2">
-            <Icon name="loader" :size="16" class="animate-spin" />Redirecting you now…
-          </p>
-          <p v-else class="text-base text-ink-gray-6 mt-2 max-w-[420px] mx-auto">
-            {{ form.thank_you_message || 'Thanks! Your response has been recorded.' }}
-          </p>
-
-          <div v-if="form.allow_edit && editUrl && !redirecting" class="mt-5 mx-auto max-w-[440px] text-left bg-surface-gray-1 rounded-lg p-3.5">
-            <div class="flex items-center gap-1.5 text-sm text-ink-gray-7 mb-2"><Icon name="pencil" :size="13" />Edit your response later</div>
-            <div class="flex items-center gap-2">
-              <input readonly class="cfg-input flex-1 text-[12px]" :value="editUrl" @focus="$event.target.select()" />
-              <Button variant="subtle" theme="gray" @click="copyEditLink">Copy</Button>
-            </div>
-          </div>
-
-          <Button v-if="!redirecting && !editing" variant="outline" theme="gray" class="mt-6" @click="done = null; editToken = null; recordName = null; resetForm()">
-            Submit another response
-          </Button>
-        </div>
+        <SuccessScreen v-else :form="form" :editing="editing" :submitResult="submitResult"
+                       :redirecting="redirecting" :editUrl="editUrl"
+                       @copy="copyEditLink" @another="submitAnother" />
       </div>
     </template>
   </div>

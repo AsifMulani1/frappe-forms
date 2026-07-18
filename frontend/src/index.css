@@ -266,6 +266,31 @@ body {
   border-color: var(--ink-gray-9);
   box-shadow: 0 0 0 1px var(--ink-gray-9);
 }
+/* a card checked for a bulk action (distinct from the single-select edit ring) */
+.q-card.checked {
+  border-color: var(--outline-gray-3);
+  box-shadow: 0 0 0 1px var(--outline-gray-3);
+  background: var(--surface-gray-1);
+}
+/* page band: a quiet centered divider marking a respondent page boundary in the builder */
+.page-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-gray-5);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.page-band::before,
+.page-band::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--outline-gray-2);
+}
 .q-card .drag-handle:active {
   cursor: grabbing;
 }

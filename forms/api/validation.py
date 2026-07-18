@@ -10,6 +10,7 @@ import frappe
 from frappe.utils import cint, flt, validate_email_address
 
 from forms.compile import GRID_TYPES, LAYOUT_TYPES, resolve_fieldname
+from forms.config import SIGNATURE_MAX_BYTES
 
 
 def _answer_values(actual) -> list[str]:
@@ -82,6 +83,12 @@ def _coerce_and_validate(spec: dict, raw):
 		if required:
 			frappe.throw(f"'{label}' is required.")
 		return None
+
+	# Structural guard: only checkboxes (list) and grids (dict) accept containers. Any other type
+	# handed a dict/list is a malformed or hostile payload — reject it cleanly instead of str()-ing
+	# it into "['x']" and silently storing that.
+	if ft not in ("checkboxes", *GRID_TYPES) and isinstance(raw, (dict, list)):
+		frappe.throw(f"'{label}' has an invalid answer.")
 
 	if ft == "email":
 		if not validate_email_address(raw):
@@ -166,7 +173,7 @@ def _coerce_and_validate(spec: dict, raw):
 		# Frappe Signature stores a base64 PNG data URL. Cap size to keep records sane.
 		if not (isinstance(raw, str) and raw.startswith("data:image/")):
 			frappe.throw(f"'{label}' must be a signature.")
-		if len(raw) > 500_000:
+		if len(raw) > SIGNATURE_MAX_BYTES:
 			frappe.throw(f"'{label}' signature is too large.")
 		return raw
 	if ft in ("short_answer", "paragraph", "address"):

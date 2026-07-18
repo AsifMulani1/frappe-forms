@@ -12,6 +12,23 @@ class FFForm(Document):
 		self.set_doctype_name()
 		self.validate_redirect_url()
 		self.ensure_field_keys()
+		self.validate_field_patterns()
+
+	def validate_field_patterns(self):
+		"""Reject an invalid validation_pattern at save time (a builder typo), so it surfaces in the
+		editor instead of silently no-op'ing at submit time. The submit path keeps its own re.error
+		fallback so pre-existing bad data can never hard-fail a respondent."""
+		import re
+
+		from forms.compile import TEXT_TYPES
+
+		for f in self.fields:
+			pattern = (f.validation_pattern or "").strip()
+			if f.field_type in TEXT_TYPES and pattern:
+				try:
+					re.compile(pattern)
+				except re.error as e:
+					frappe.throw(f"'{f.label or f.fieldname}' has an invalid validation pattern: {e}")
 
 	def ensure_field_keys(self):
 		"""Give every field a stable key the moment it's saved, so conditional logic can reference

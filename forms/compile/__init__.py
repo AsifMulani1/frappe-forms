@@ -14,6 +14,7 @@ from forms.compile.naming import (
 	GRID_TYPES,
 	LAYOUT_TYPES,
 	RESERVED_FIELDNAMES,
+	TEXT_TYPES,
 	cint_bool,
 	freeze_fieldnames,
 	newline_options,
@@ -27,6 +28,7 @@ from forms.compile.publish import (
 	publish_collection,
 	publish_linked,
 )
+from forms.compile.validate import validate_conditional_logic
 
 __all__ = [
 	"CHOICE_TYPES",
@@ -34,6 +36,7 @@ __all__ = [
 	"GRID_TYPES",
 	"LAYOUT_TYPES",
 	"RESERVED_FIELDNAMES",
+	"TEXT_TYPES",
 	"build_docfields",
 	"cint_bool",
 	"compile_preview",
@@ -46,4 +49,5 @@ __all__ = [
 	"resolve_fieldname",
 	"scrub_fieldname",
 	"title_case",
+	"validate_conditional_logic",
 ]

@@ -9,6 +9,7 @@ from frappe.rate_limiter import rate_limit
 from frappe.utils import cint
 
 from forms.compile import resolve_fieldname
+from forms.config import PUBLIC_RENDER_RATE_LIMIT, RATE_WINDOW_HOUR, TRACK_VIEW_RATE_LIMIT
 
 WORKFLOW_STATES = ("Pending", "Confirmed", "Waitlist")
 
@@ -115,14 +116,14 @@ def public_render_spec(form, check_state: bool = True) -> dict:
 
 
 @frappe.whitelist(allow_guest=True)
-@rate_limit(key="slug", limit=600, seconds=60 * 60)
+@rate_limit(key="slug", limit=PUBLIC_RENDER_RATE_LIMIT, seconds=RATE_WINDOW_HOUR)
 def get_public_form(slug: str) -> dict:
 	"""Render spec for a published form. 404 for drafts / unknown slugs."""
 	return public_render_spec(_published_form(slug))
 
 
 @frappe.whitelist(allow_guest=True)
-@rate_limit(key="slug", limit=120, seconds=60 * 60)
+@rate_limit(key="slug", limit=TRACK_VIEW_RATE_LIMIT, seconds=RATE_WINDOW_HOUR)
 def track_view(slug: str) -> dict:
 	"""Count one public open of a published form (drives the completion funnel).
 

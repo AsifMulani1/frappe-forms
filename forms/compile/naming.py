@@ -35,6 +35,7 @@ LAYOUT_TYPES = ("section_header",)
 
 CHOICE_TYPES = ("single_choice", "dropdown")  # newline-joined string options
 GRID_TYPES = ("mc_grid", "checkbox_grid")  # rows x columns -> a child table of {row, value}
+TEXT_TYPES = ("short_answer", "paragraph", "address")  # free text; accept an optional regex pattern
 
 # Fieldnames a generated column may NEVER take: Frappe's own system columns (overwriting `owner`
 # or `name` corrupts ownership/identity), the child-table link columns, and this app's reserved
@@ -84,6 +85,25 @@ def freeze_fieldnames(form):
 		# guard) is re-derived; an unfrozen one is deduped normally.
 		f.fieldname = _dedupe(name, seen)
 	form.save(ignore_permissions=True)
+
+
+def cap_doctype_name(full: str) -> str:
+	"""Cap a generated child-DocType name at Frappe's 61-char limit without letting the truncation
+	collide two different forms onto one DocType.
+
+	Two unrelated forms with long names can share a 61-char prefix; because the child-DocType
+	ensure-helpers early-return on an existing name, a naive truncation would make the second form
+	silently reuse the first form's child table (cross-form data bleed). When we must truncate, we
+	reserve the last chars for a deterministic hash of the *full* (untruncated) name, so distinct
+	inputs stay distinct while the same input is stable across re-publishes.
+	"""
+	import hashlib
+
+	full = (full or "").strip()
+	if len(full) <= 61:
+		return full
+	digest = hashlib.md5(full.encode("utf-8")).hexdigest()[:4]
+	return f"{full[:56].strip()} {digest}"
 
 
 def newline_options(options: str) -> str:

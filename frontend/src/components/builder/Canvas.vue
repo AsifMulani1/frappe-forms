@@ -1,12 +1,13 @@
 <script setup>
-import { Button, FormControl, Switch } from 'frappe-ui'
+import { Button, Checkbox, FormControl, Switch, confirmDialog } from 'frappe-ui'
 import Icon from '../Icon.vue'
 import FieldTypePicker from './FieldTypePicker.vue'
 import { FT, isLayout, canHaveOther, canShuffleOptions, isText, isGrid, canBeConditionSource, isGradable, hasOptions } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
+import { useSelection } from '../../data/useSelection'
 import { optionsArray, rowsArray, scaleRange, correctSet, isCorrect, quizOptions, setLine, addLine, removeLine, toggleLine } from './fieldEditing'
 
-import { ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 const props = defineProps({
   form: Object,
@@ -14,7 +15,41 @@ const props = defineProps({
 })
 const emit = defineEmits([
   'select', 'update-meta', 'update-field', 'delete', 'duplicate', 'move', 'reorder', 'add',
+  'delete-many', 'duplicate-many', 'required-many',
 ])
+
+// Multi-select for bulk actions, derived from the live field list so "select all" tracks edits.
+const {
+  selected: selectedSet, selectMode, allSelected,
+  toggle: toggleSelect, clear: clearSelect, names: selectedNames, toggleAll,
+} = useSelection(() => props.form.fields)
+
+function bulkDuplicate() { emit('duplicate-many', selectedNames.value); clearSelect() }
+function bulkRequired(reqd) { emit('required-many', { names: selectedNames.value, reqd }) }
+function bulkDelete() {
+  const names = selectedNames.value
+  confirmDialog({
+    title: `Delete ${names.length} field${names.length > 1 ? 's' : ''}?`,
+    message: 'Published columns are kept (hidden) but removed from the form. This cannot be undone.',
+    onConfirm: ({ hideDialog }) => { emit('delete-many', names); clearSelect(); hideDialog?.() },
+  })
+}
+
+// Scroll the selected card into view when selection changes (e.g. after duplicate/add). block:
+// 'nearest' is a no-op when the card is already fully visible, so clicking a visible card is calm.
+watch(() => props.selectedId, (id) => {
+  if (!id) return
+  nextTick(() => canvasEl.value?.querySelector('.q-card.selected')?.scrollIntoView({ block: 'nearest' }))
+})
+
+// Pages: a section header starts a new respondent page. Number them so the builder shows the same
+// page structure the respondent will see, without restructuring the flat field list.
+const hasPages = computed(() => props.form.fields.some((f) => isLayout(f.field_type)))
+function pageNumberAt(i) {
+  let n = 1
+  for (let k = 0; k <= i; k++) if (isLayout(props.form.fields[k].field_type)) n++
+  return n
+}
 
 // Pointer-based reorder. The grabbed card follows the pointer via transform; neighbours slide
 // out of the way (CSS-transitioned) to reveal the drop slot. Drop thresholds use the cards'
@@ -97,6 +132,22 @@ function toggleCorrect(field, opt) {
 <template>
   <div class="flex-1 overflow-auto bg-surface-base">
     <div ref="canvasEl" class="max-w-[720px] mx-auto px-3 pt-7 pb-20 sm:px-6">
+      <!-- bulk action bar: appears once one or more fields are checked -->
+      <div v-if="selectMode" class="sticky top-2 z-20 mb-3 flex items-center gap-2 rounded-[10px] border border-outline-gray-2 bg-surface-base shadow-sm px-3 py-2">
+        <div class="flex items-center gap-2 text-sm text-ink-gray-7 cursor-pointer" @click="toggleAll">
+          <Checkbox class="pointer-events-none" :modelValue="allSelected" />
+          {{ selectedNames.length }} selected
+        </div>
+        <div class="ml-auto flex items-center gap-1">
+          <Button variant="ghost" theme="gray" @click="bulkRequired(1)"><template #prefix><Icon name="asterisk" :size="14" /></template>Required</Button>
+          <Button variant="ghost" theme="gray" @click="bulkRequired(0)"><template #prefix><Icon name="circle" :size="14" /></template>Optional</Button>
+          <Button variant="ghost" theme="gray" @click="bulkDuplicate"><template #prefix><Icon name="copy" :size="14" /></template>Duplicate</Button>
+          <Button variant="ghost" theme="red" @click="bulkDelete"><template #prefix><Icon name="trash-2" :size="14" /></template>Delete</Button>
+          <div class="w-px h-[18px] bg-outline-gray-2 mx-1" />
+          <Button variant="ghost" theme="gray" @click="clearSelect">Cancel</Button>
+        </div>
+      </div>
+
       <!-- form header card -->
       <div class="public-card overflow-hidden mb-4 cursor-pointer"
            :class="{ 'ring-1 ring-ink-gray-9': selectedId === null }"
@@ -112,6 +163,9 @@ function toggleCorrect(field, opt) {
         </div>
       </div>
 
+      <!-- page 1 marker: only meaningful once the form has at least one page break -->
+      <div v-if="hasPages" class="page-band"><span>Page 1</span></div>
+
       <!-- question cards, each preceded by a hover-reveal insert point -->
       <template v-for="(f, i) in form.fields" :key="f.name">
         <div class="insert-gap">
@@ -123,12 +177,19 @@ function toggleCorrect(field, opt) {
             </template>
           </FieldTypePicker>
         </div>
-        <div class="q-card group" :class="{ selected: selectedId === f.name, dragging: drag && drag.from === i }"
+        <div class="q-card group" :class="{ selected: selectedId === f.name, dragging: drag && drag.from === i, checked: selectedSet.has(f.name) }"
              :style="cardStyle(i)"
              @click="emit('select', f.name)">
+        <!-- multi-select checkbox: gutter, revealed on hover or while selecting. The wrapper owns the
+             click so selection is deterministic; the Checkbox is a visual indicator (pointer-events off). -->
+        <div class="absolute -left-7 top-3.5 transition-opacity cursor-pointer"
+             :class="selectedSet.has(f.name) || selectMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
+             title="Select field" @click.stop="toggleSelect(f.name)">
+          <Checkbox class="pointer-events-none" :modelValue="selectedSet.has(f.name)" />
+        </div>
         <div class="relative flex items-center gap-1">
           <!-- drag handle: hover-reveal, centered on the label line, tucked in the left gutter -->
-          <span class="drag-handle absolute -left-5 top-1/2 -translate-y-1/2 text-ink-gray-3 hover:text-ink-gray-6 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity touch-none"
+          <span v-if="!selectMode" class="drag-handle absolute -left-5 top-1/2 -translate-y-1/2 text-ink-gray-3 hover:text-ink-gray-6 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity touch-none"
                 title="Drag to reorder" @click.stop @pointerdown="startDrag($event, i)">
             <Icon name="grip-vertical" :size="15" />
           </span>
@@ -149,7 +210,7 @@ function toggleCorrect(field, opt) {
                :value="f.help_text" :placeholder="isLayout(f.field_type) ? 'Add a subtitle (optional)' : 'Add a description (optional)'"
                @click.stop @input="emit('update-field', f.name, { help_text: $event.target.value })" />
         <div v-if="isLayout(f.field_type)" class="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-ink-gray-5 bg-surface-gray-2 rounded px-1.5 py-0.5 w-fit">
-          <Icon name="corner-down-right" :size="11" />Starts a new page for respondents
+          <Icon name="corner-down-right" :size="11" />Page {{ pageNumberAt(i) }} · starts a new page for respondents
         </div>
 
         <!-- preview controls (none for display-only blocks like section headers) -->
@@ -372,7 +433,7 @@ function toggleCorrect(field, opt) {
         </FieldTypePicker>
       </div>
 
-      <div v-else class="flex justify-center mt-4">
+      <div v-else class="flex justify-center gap-2 mt-4">
         <FieldTypePicker placement="top" @pick="emit('add', $event)">
           <template #trigger="{ toggle }">
             <Button variant="outline" theme="gray" @click="toggle">
@@ -380,6 +441,9 @@ function toggleCorrect(field, opt) {
             </Button>
           </template>
         </FieldTypePicker>
+        <Button variant="outline" theme="gray" title="Add a page break" @click="emit('add', 'section_header')">
+          <template #prefix><Icon name="corner-down-right" :size="15" /></template>Add page
+        </Button>
       </div>
     </div>
   </div>
