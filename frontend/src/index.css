@@ -394,6 +394,21 @@ body {
   display: flex;
   flex-direction: column;
 }
+/* Response detail drawer: fixed to the viewport below the page topbar, so it spans full height over
+   the scrollable list (unlike .dev-panel, which is absolute within a non-scrolling parent). */
+.record-drawer {
+  position: fixed;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  background: var(--surface-base);
+  border-left: 1px solid var(--outline-gray-2);
+  box-shadow: var(--shadow-xl);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+}
 .code-surface {
   background: #0f0f0f;
   border-radius: 10px;

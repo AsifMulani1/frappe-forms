@@ -199,10 +199,11 @@ async function exportCsv() {
         </div>
       </div>
 
-      <!-- record drawer -->
+      <!-- record drawer: fixed to the viewport (below the 48px topbar) so it always covers the full
+           height — the list is a scroll container, so an absolute overlay would only span one screen -->
       <template v-if="openRec">
-        <div class="absolute inset-0 bg-black/20 z-[55]" @click="openRec = null" />
-        <div class="dev-panel" style="width:420px" v-if="drawer">
+        <div class="fixed left-0 right-0 bottom-0 top-[48px] bg-black/20 z-[55]" @click="openRec = null" />
+        <div class="record-drawer" v-if="drawer">
           <div class="flex items-center justify-between px-4 border-b border-outline-gray-1 h-[52px] shrink-0">
             <div class="flex items-center gap-2">
               <Avatar :label="drawer.fields[0]?.value || drawer.name" size="md" />
