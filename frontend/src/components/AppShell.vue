@@ -6,6 +6,7 @@ import Icon from './Icon.vue'
 import AppLauncher from './AppLauncher.vue'
 import { session, logout } from '../data/session'
 import { prefs, toggleDevMode, toggleTheme } from '../data/prefs'
+import brandLogo from '../assets/logo.svg'
 
 const router = useRouter()
 const route = useRoute()
@@ -55,9 +56,7 @@ const sections = computed(() => [{
         <Dropdown :options="headerMenu" placement="bottom-start">
           <button class="flex items-center h-12 w-full rounded-md transition-colors hover:bg-surface-gray-3"
                   :class="prefs.navCollapsed ? 'justify-center' : 'gap-2.5 px-2'">
-            <span class="w-8 h-8 rounded-[7px] bg-accent flex items-center justify-center text-white shrink-0">
-              <Icon name="clipboard-list" :size="16" />
-            </span>
+            <img :src="brandLogo" alt="Frappe Forms" class="w-8 h-8 rounded-[7px] shrink-0" />
             <template v-if="!prefs.navCollapsed">
               <div class="flex flex-col flex-1 min-w-0 text-left leading-tight">
                 <span class="text-sm font-medium text-ink-gray-9 truncate">Frappe Forms</span>
