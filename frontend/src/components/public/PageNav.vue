@@ -9,7 +9,7 @@ defineEmits(['prev', 'next', 'submit', 'reset'])
 </script>
 
 <template>
-  <div class="flex items-center justify-between border-t border-outline-gray-1 pt-5 mt-1">
+  <div class="flex items-center justify-between">
     <div class="flex items-center gap-2">
       <Button v-if="multiPage && currentPage > 0" variant="outline" theme="gray" size="lg" @click="$emit('prev')">Back</Button>
       <Button v-if="!isLastPage" variant="solid" theme="gray" size="lg" @click="$emit('next')">Next</Button>

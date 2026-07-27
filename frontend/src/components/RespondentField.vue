@@ -36,12 +36,12 @@ function gridCbChecked(row, col) {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2 mb-6">
-    <div class="flex flex-col gap-0.5">
-      <span class="text-[15px] font-medium text-ink-gray-9">
-        {{ field.label }}<span v-if="field.reqd" class="text-ink-red-500 ml-0.5">*</span>
+  <div class="flex flex-col gap-2.5">
+    <div class="flex flex-col gap-1">
+      <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">
+        {{ field.label }}<span v-if="field.reqd" class="text-ink-red-400 ml-0.5">*</span>
       </span>
-      <span v-if="field.help_text" class="text-sm text-ink-gray-5">{{ field.help_text }}</span>
+      <span v-if="field.help_text" class="text-[13px] text-ink-gray-5 leading-snug">{{ field.help_text }}</span>
     </div>
 
     <FormControl v-if="field.field_type === 'short_answer'" type="text" size="lg" placeholder="Your answer"
@@ -93,18 +93,18 @@ function gridCbChecked(row, col) {
       </span>
     </div>
 
-    <div v-else-if="field.field_type === 'linear_scale'" class="flex items-center gap-x-4 gap-y-2 flex-wrap pt-1">
-      <span v-if="field.min_label" class="text-sm text-ink-gray-6 shrink-0">{{ field.min_label }}</span>
-      <div class="flex items-center gap-3">
+    <div v-else-if="field.field_type === 'linear_scale'" class="flex items-end gap-x-5 gap-y-2 flex-wrap pt-1">
+      <span v-if="field.min_label" class="text-xs text-ink-gray-5 shrink-0">{{ field.min_label }}</span>
+      <div class="flex items-center gap-3.5">
         <button v-for="n in scaleRange(field)" :key="n" type="button" class="flex flex-col items-center gap-1.5"
                 @click="emit('set', n)">
-          <span class="text-[13px] text-ink-gray-7">{{ n }}</span>
+          <span class="text-[13px] text-ink-gray-6">{{ n }}</span>
           <span class="r-radio" :style="value === n ? 'border-color:var(--accent)' : ''">
             <span v-if="value === n" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
           </span>
         </button>
       </div>
-      <span v-if="field.max_label" class="text-sm text-ink-gray-6 shrink-0">{{ field.max_label }}</span>
+      <span v-if="field.max_label" class="text-xs text-ink-gray-5 shrink-0">{{ field.max_label }}</span>
     </div>
 
     <div v-else-if="field.field_type === 'mc_grid' || field.field_type === 'checkbox_grid'" class="overflow-x-auto -mx-1 px-1">
@@ -133,14 +133,14 @@ function gridCbChecked(row, col) {
     </div>
 
     <div v-else-if="field.field_type === 'yes_no'" class="flex gap-2">
-      <div v-for="o in ['Yes', 'No']" :key="o" class="r-choice min-w-[92px] flex-none"
+      <div v-for="o in ['Yes', 'No']" :key="o" class="r-choice boxed min-w-[92px] flex-none"
            :class="{ sel: value === o }" @click="emit('set', o)">
         <span class="r-radio"><span v-if="value === o" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" /></span>
         <span class="text-base text-ink-gray-8">{{ o }}</span>
       </div>
     </div>
 
-    <div v-else-if="field.field_type === 'single_choice'" class="flex flex-col gap-2">
+    <div v-else-if="field.field_type === 'single_choice'" class="flex flex-col gap-1">
       <div v-for="o in options" :key="o" class="r-choice"
            :class="{ sel: !otherOn && value === o }" @click="emit('selectChoice', o)">
         <span class="r-radio"><span v-if="!otherOn && value === o" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" /></span>
@@ -155,7 +155,7 @@ function gridCbChecked(row, col) {
       </div>
     </div>
 
-    <div v-else-if="field.field_type === 'checkboxes'" class="flex flex-col gap-2">
+    <div v-else-if="field.field_type === 'checkboxes'" class="flex flex-col gap-1">
       <div v-for="o in options" :key="o" class="r-choice"
            :class="{ sel: (value || []).includes(o) }" @click="emit('toggleCb', o)">
         <span class="r-cb"><Icon v-if="(value || []).includes(o)" name="check" :size="12" /></span>

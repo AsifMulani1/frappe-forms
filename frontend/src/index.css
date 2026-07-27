@@ -453,11 +453,81 @@ body {
   border-radius: 8px;
   font-size: 16px;
 }
+/* Layout-only container: it scopes the input styling and the monochrome-accent retarget
+   below, but is no longer a visible box — each question now sits in its own .q-card. */
 .public-card {
+  position: relative;
+}
+/* One card per question: a quiet white surface on the gray page so the eye handles a
+   single question at a time. Hairline + a whisper of a shadow — restraint over boxing.
+   The card being answered lifts slightly and grows a 2px accent left-edge (the form's own
+   accent hue, via --accent-ink which the monochrome retarget below leaves untouched);
+   an invalid card shows the same edge in red. (Named r-card, not q-card, to avoid the
+   builder's own .q-card editor styling.) */
+.r-card {
+  position: relative;
   background: var(--surface-base);
-  border: 1px solid var(--outline-gray-1);
-  border-radius: 12px;
+  border: 1px solid var(--outline-gray-2);
+  border-radius: 10px;
   box-shadow: var(--shadow-sm);
+  padding: 22px 24px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.r-card::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.r-card.active {
+  border-color: var(--outline-gray-3);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px rgb(0 0 0 / 0.06);
+}
+.r-card.active::before {
+  background: var(--accent-ink);
+}
+.r-card.invalid {
+  border-color: var(--outline-red-2);
+}
+.r-card.invalid::before {
+  background: var(--red-500);
+}
+/* Answer inputs: swap frappe-ui's filled-gray FormControls for hairline, no-fill
+   fields so they recede under the question labels and match the flat options and
+   the card. Scoped by the [class*="bg-surface-gray-2"] the component emits, so the
+   raw "Other" text field and file-upload row are untouched. */
+.public-card input[class*="bg-surface-gray-2"],
+.public-card textarea[class*="bg-surface-gray-2"],
+.public-card select[class*="bg-surface-gray-2"] {
+  background-color: var(--surface-base) !important;
+  border-color: var(--outline-gray-2) !important;
+}
+.public-card input[class*="bg-surface-gray-2"]:hover,
+.public-card textarea[class*="bg-surface-gray-2"]:hover,
+.public-card select[class*="bg-surface-gray-2"]:hover {
+  background-color: var(--surface-base) !important;
+  border-color: var(--outline-gray-3) !important;
+}
+.public-card input[class*="bg-surface-gray-2"]:focus,
+.public-card textarea[class*="bg-surface-gray-2"]:focus,
+.public-card select[class*="bg-surface-gray-2"]:focus {
+  background-color: var(--surface-base) !important;
+  border-color: var(--outline-gray-4) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+/* Selection affordances render monochrome (Espresso style), not in the form accent
+   hue. Retargeting these tokens inside the card makes every selected state — option
+   rows, scale dots, grid cells (CSS + inline styles alike) — near-black on a light
+   gray tint. The accent still drives the progress bar / cover outside the card. */
+.public-card {
+  --accent: var(--ink-gray-9);
+  --accent-surface: var(--surface-gray-3);
+  --accent-outline: var(--outline-gray-3);
 }
 .r-input {
   width: 100%;
@@ -481,20 +551,36 @@ textarea.r-input {
   line-height: 1.5;
   resize: vertical;
 }
+/* Stacked options (single_choice / checkboxes): borderless rows so a list of
+   choices reads as a light group, not a stack of buttons. Selection shows as a
+   subtle row tint plus the accent glyph. */
 .r-choice {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 11px 13px;
-  border: 1px solid var(--outline-gray-2);
+  gap: 10px;
+  padding: 7px 8px;
   border-radius: 8px;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition: background 0.12s;
 }
 .r-choice:hover {
-  border-color: var(--outline-gray-3);
+  background: var(--surface-gray-2);
 }
 .r-choice.sel {
+  background: var(--accent-surface);
+}
+/* Boxed variant for horizontal chips (yes/no), where a resting border is needed
+   to read as a tappable target. */
+.r-choice.boxed {
+  padding: 9px 13px;
+  border: 1px solid var(--outline-gray-2);
+  transition: border-color 0.12s, background 0.12s;
+}
+.r-choice.boxed:hover {
+  background: transparent;
+  border-color: var(--outline-gray-3);
+}
+.r-choice.boxed.sel {
   border-color: var(--accent);
   background: var(--accent-surface);
 }
