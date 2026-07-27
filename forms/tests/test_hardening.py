@@ -214,7 +214,7 @@ class TestHardening(IntegrationTestCase):
 			self.assertTrue(_formula_safe(f"{trigger}evil").startswith("'"))
 		self.assertEqual(_formula_safe("safe"), "safe")
 
-		form = published_form("hard-csv", [
+		published_form("hard-csv", [
 			{"label": "Note", "field_type": "short_answer"},
 		], "Hard Csv Rec")
 		frappe.db.delete("Hard Csv Rec")
