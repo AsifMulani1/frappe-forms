@@ -43,6 +43,9 @@ const otherText = reactive({})
 const pages = ref([]) // [{ header: field|null, fields: [...] }]
 const currentPage = ref(0)
 const optionMap = reactive({})
+// Which question card is "active" — the last one focused or tapped. Drives the accent edge
+// so the respondent always sees where they are, one card at a time.
+const activeField = ref(null)
 
 function shuffle(arr) {
   const a = [...arr]
@@ -131,12 +134,14 @@ function nextPage() {
   if (!validatePage(currentPage.value)) return
   if (currentPage.value < pages.value.length - 1) {
     currentPage.value++
+    activeField.value = null // new page: drop the previous page's active card
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 function prevPage() {
   if (currentPage.value > 0) {
     currentPage.value--
+    activeField.value = null
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
@@ -269,6 +274,7 @@ function resetForm() {
   respondentEmail.value = form.value?.user_email || ''
   emailError.value = false
   submitResult.value = null
+  activeField.value = null
 }
 // "Submit another response": clear the done/edit state and start a fresh blank form.
 function submitAnother() {
@@ -415,61 +421,72 @@ async function submit() {
       <!-- progress -->
       <ProgressBar :show="form.show_progress !== 0" :pct="pct" :done="!!done" />
 
-      <div class="max-w-[600px] mx-auto px-3 pt-8 pb-16 sm:px-5">
+      <div class="max-w-[672px] mx-auto px-3 pt-8 pb-16 sm:px-5">
         <template v-if="!done">
           <img v-if="form.cover_image" :src="form.cover_image" alt="" class="w-full h-[180px] object-cover rounded-xl mb-6" />
           <div class="mb-7">
             <h1 class="text-2xl font-semibold text-ink-gray-9 tracking-tight">{{ form.title }}</h1>
             <p v-if="form.description" class="text-base text-ink-gray-6 mt-2">{{ form.description }}</p>
-            <p class="text-sm text-ink-gray-5 mt-3.5"><span class="text-ink-red-500">*</span> Indicates a required question</p>
+            <p class="text-sm text-ink-gray-5 mt-3.5"><span class="text-ink-red-400">*</span> Indicates a required question</p>
           </div>
 
           <!-- the signed-in respondent's own past submissions -->
           <SubmissionsList :subs="mySubs" :meta="mySubsMeta" :slug="slug" @delete="deleteSub" />
 
-          <div class="public-card p-5 sm:p-7">
+          <div class="public-card flex flex-col gap-4">
             <!-- honeypot -->
             <input v-model="hp" type="text" tabindex="-1" autocomplete="off"
                    class="absolute opacity-0 pointer-events-none -z-10 h-0 w-0" aria-hidden="true" />
 
-            <!-- email capture (first page only) -->
-            <div v-if="form.collect_email && currentPage === 0" class="flex flex-col gap-2 mb-6">
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[15px] font-medium text-ink-gray-9">Email<span class="text-ink-red-500 ml-0.5">*</span></span>
-                <span class="text-sm text-ink-gray-5">Recorded with your response.</span>
-              </div>
-              <FormControl type="email" size="lg" placeholder="name@example.com"
-                     :modelValue="respondentEmail" @update:modelValue="respondentEmail = $event; emailError = false" />
-              <span v-if="emailError" class="text-xs text-ink-red-500 flex items-center gap-1">
-                <Icon name="circle-alert" :size="12" />Enter a valid email address.
-              </span>
-            </div>
-
-            <!-- page heading (from the section_header that starts this page) -->
-            <div v-if="page.header" class="mb-6">
+            <!-- page heading (from the section_header that starts this page): a bare label above the cards -->
+            <div v-if="page.header" class="px-1 pt-1">
               <h2 class="text-lg font-semibold text-ink-gray-9">{{ page.header.label }}</h2>
               <p v-if="page.header.help_text" class="text-sm text-ink-gray-5 mt-1">{{ page.header.help_text }}</p>
             </div>
 
-            <RespondentField
-              v-for="f in visibleFields(page.fields)" :key="f.fieldname"
-              :field="f" :value="answers[f.fieldname]" :options="optionMap[f.fieldname]"
-              :error="errors[f.fieldname]" :otherOn="!!otherOn[f.fieldname]" :otherText="otherText[f.fieldname]"
-              :uploading="!!uploading[f.fieldname]" :fileName="fileNames[f.fieldname]"
-              @set="setVal(f.fieldname, $event)"
-              @toggleCb="toggleCb(f.fieldname, $event)"
-              @selectChoice="selectChoice(f, $event)"
-              @selectOther="selectOther(f)"
-              @setOther="setOther(f, $event)"
-              @onDropdown="onDropdown(f, $event)"
-              @setGridMc="setGridMc(f, $event.row, $event.col)"
-              @toggleGridCb="toggleGridCb(f, $event.row, $event.col)"
-              @upload="uploadFile(f, $event)"
-              @clearFile="clearFile(f)" />
+            <!-- email capture (first page only) -->
+            <div v-if="form.collect_email && currentPage === 0" class="r-card"
+                 :class="{ active: activeField === '__email__', invalid: emailError }"
+                 @focusin="activeField = '__email__'" @pointerdown="activeField = '__email__'">
+              <div class="flex flex-col gap-2.5">
+                <div class="flex flex-col gap-1">
+                  <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">Email<span class="text-ink-red-400 ml-0.5">*</span></span>
+                  <span class="text-[13px] text-ink-gray-5 leading-snug">Recorded with your response.</span>
+                </div>
+                <FormControl type="email" size="lg" placeholder="name@example.com"
+                       :modelValue="respondentEmail" @update:modelValue="respondentEmail = $event; emailError = false" />
+                <span v-if="emailError" class="text-xs text-ink-red-500 flex items-center gap-1">
+                  <Icon name="circle-alert" :size="12" />Enter a valid email address.
+                </span>
+              </div>
+            </div>
 
-            <PageNav :multiPage="multiPage" :currentPage="currentPage" :isLastPage="isLastPage"
-                     :submitting="submitting" :editing="editing" :pageCount="pages.length"
-                     @prev="prevPage" @next="nextPage" @submit="submit" @reset="resetForm" />
+            <!-- one card per question -->
+            <div v-for="f in visibleFields(page.fields)" :key="f.fieldname" class="r-card"
+                 :class="{ active: activeField === f.fieldname, invalid: !!errors[f.fieldname] }"
+                 @focusin="activeField = f.fieldname" @pointerdown="activeField = f.fieldname">
+              <RespondentField
+                :field="f" :value="answers[f.fieldname]" :options="optionMap[f.fieldname]"
+                :error="errors[f.fieldname]" :otherOn="!!otherOn[f.fieldname]" :otherText="otherText[f.fieldname]"
+                :uploading="!!uploading[f.fieldname]" :fileName="fileNames[f.fieldname]"
+                @set="setVal(f.fieldname, $event)"
+                @toggleCb="toggleCb(f.fieldname, $event)"
+                @selectChoice="selectChoice(f, $event)"
+                @selectOther="selectOther(f)"
+                @setOther="setOther(f, $event)"
+                @onDropdown="onDropdown(f, $event)"
+                @setGridMc="setGridMc(f, $event.row, $event.col)"
+                @toggleGridCb="toggleGridCb(f, $event.row, $event.col)"
+                @upload="uploadFile(f, $event)"
+                @clearFile="clearFile(f)" />
+            </div>
+
+            <!-- footer: submit / navigation in its own quiet card -->
+            <div class="r-card">
+              <PageNav :multiPage="multiPage" :currentPage="currentPage" :isLastPage="isLastPage"
+                       :submitting="submitting" :editing="editing" :pageCount="pages.length"
+                       @prev="prevPage" @next="nextPage" @submit="submit" @reset="resetForm" />
+            </div>
           </div>
 
           <div class="flex flex-col gap-0.5 mt-4 px-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
