@@ -134,12 +134,14 @@ function nextPage() {
   if (!validatePage(currentPage.value)) return
   if (currentPage.value < pages.value.length - 1) {
     currentPage.value++
+    activeField.value = null // new page: drop the previous page's active card
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
 function prevPage() {
   if (currentPage.value > 0) {
     currentPage.value--
+    activeField.value = null
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
@@ -272,6 +274,7 @@ function resetForm() {
   respondentEmail.value = form.value?.user_email || ''
   emailError.value = false
   submitResult.value = null
+  activeField.value = null
 }
 // "Submit another response": clear the done/edit state and start a fresh blank form.
 function submitAnother() {
@@ -418,7 +421,7 @@ async function submit() {
       <!-- progress -->
       <ProgressBar :show="form.show_progress !== 0" :pct="pct" :done="!!done" />
 
-      <div class="max-w-[600px] mx-auto px-3 pt-8 pb-16 sm:px-5">
+      <div class="max-w-[672px] mx-auto px-3 pt-8 pb-16 sm:px-5">
         <template v-if="!done">
           <img v-if="form.cover_image" :src="form.cover_image" alt="" class="w-full h-[180px] object-cover rounded-xl mb-6" />
           <div class="mb-7">
