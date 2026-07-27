@@ -5,6 +5,7 @@
 # DocType or validate a Linked mapping. compile_preview renders the same output without writing.
 
 import frappe
+from frappe.utils import cint
 
 from forms.compile.doctypes import (
 	_ensure_grid_doctype,
@@ -136,6 +137,19 @@ def publish_linked(form):
 	"""Validate the mapping against the target DocType; make NO schema change."""
 	if not form.target_doctype:
 		frappe.throw("Linked forms must select a target DocType.")
+
+	# Guardrail: with apply_doc_perms off, submissions insert with ignore_permissions (the guest
+	# path), so a form must only feed a DocType its owner could create records in directly. Without
+	# this a Forms Manager could route unauthenticated inserts into ANY DocType, bypassing the
+	# permission system. When apply_doc_perms is on, the submitter's own create permission is
+	# enforced at submit time, so the owner's access isn't the boundary.
+	if not cint(form.apply_doc_perms) and not frappe.has_permission(
+		form.target_doctype, "create", user=form.owner
+	):
+		frappe.throw(
+			f"This form inserts records without applying permissions, so it can only target a "
+			f"DocType you're allowed to create. You don't have create access to {form.target_doctype}."
+		)
 
 	meta = frappe.get_meta(form.target_doctype)
 	valid = {df.fieldname for df in meta.fields}

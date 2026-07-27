@@ -49,8 +49,9 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 	Returns {name}, plus {token} when the form allows editing and this is a new record.
 	"""
 	if hp:
-		# Honeypot tripped - pretend success without writing anything.
-		frappe.throw("Submission rejected.")
+		# Honeypot tripped: a real user never fills this hidden field. Return a plausible success
+		# (a fake record name) without writing anything, so a bot can't tell it was rejected.
+		return {"name": frappe.generate_hash(length=12)}
 
 	form = _published_form(slug)
 

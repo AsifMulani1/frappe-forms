@@ -170,8 +170,9 @@ def _coerce_and_validate(spec: dict, raw):
 			frappe.throw(f"'{label}' must be an uploaded file.")
 		return raw
 	if ft == "signature":
-		# Frappe Signature stores a base64 PNG data URL. Cap size to keep records sane.
-		if not (isinstance(raw, str) and raw.startswith("data:image/")):
+		# Frappe Signature stores a base64 PNG data URL. Pin to PNG (never svg+xml, which can
+		# carry script) and cap size to keep records sane.
+		if not (isinstance(raw, str) and raw.startswith("data:image/png")):
 			frappe.throw(f"'{label}' must be a signature.")
 		if len(raw) > SIGNATURE_MAX_BYTES:
 			frappe.throw(f"'{label}' signature is too large.")

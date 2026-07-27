@@ -289,16 +289,17 @@ class TestApi(IntegrationTestCase):
 		self.assertTrue(frappe.db.exists(form.doctype_name, res["name"]))
 
 	def test_honeypot_rejects_and_writes_nothing(self):
-		# A tripped honeypot is rejected before any record is written.
+		# A tripped honeypot returns a plausible success (so a bot can't detect the trap) but writes
+		# no record.
 		before = frappe.db.count("Api Test Collection")
 		frappe.set_user("Guest")
 		try:
-			with self.assertRaises(frappe.ValidationError):
-				api.submit("api-test", json.dumps({
-					"full_name": "Bot", "email": "bot@example.com",
-				}), hp="i am a bot")
+			res = api.submit("api-test", json.dumps({
+				"full_name": "Bot", "email": "bot@example.com",
+			}), hp="i am a bot")
 		finally:
 			frappe.set_user("Administrator")
+		self.assertIn("name", res)
 		self.assertEqual(frappe.db.count("Api Test Collection"), before)
 
 	def test_email_receipt_sent(self):

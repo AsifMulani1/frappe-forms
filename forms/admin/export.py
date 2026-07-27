@@ -13,6 +13,16 @@ from forms.compile import resolve_fieldname
 # Synchronous export ceiling: never load an unbounded result set into memory.
 EXPORT_ROW_CAP = 50_000
 
+# Leading characters a spreadsheet may execute as a formula. A submitted answer starting with one
+# of these is prefixed with a quote so it exports as literal text (CSV / Sheets injection guard).
+_FORMULA_TRIGGERS = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _formula_safe(value) -> str:
+	"""Stringify a cell, neutralising a leading formula trigger so it can't execute on open."""
+	text = "" if value is None else str(value)
+	return "'" + text if text and text[0] in _FORMULA_TRIGGERS else text
+
 
 def _submission_columns(form) -> list:
 	"""Ordered (key, label) columns shared by the CSV and Frappe Sheets exports.
@@ -65,7 +75,7 @@ def export_csv(slug: str) -> str:
 	writer = csv.DictWriter(buf, fieldnames=headers, extrasaction="ignore")
 	writer.writeheader()
 	for r in rows:
-		writer.writerow(r)
+		writer.writerow({k: _formula_safe(r.get(k)) for k in headers})
 	return buf.getvalue()
 
 
@@ -89,9 +99,9 @@ def _build_sheets_data(headers: list, data_rows: list) -> str:
 	compression; we pass the plain JSON string.
 	"""
 	tab = "Responses"
-	grid = {"0": [str(h) for h in headers]}
+	grid = {"0": [_formula_safe(h) for h in headers]}
 	for i, row in enumerate(data_rows, start=1):
-		grid[str(i)] = ["" if v is None else str(v) for v in row]
+		grid[str(i)] = [_formula_safe(v) for v in row]
 	bold_header = {f"{_col_label(c)}1": {"bold": True} for c in range(len(headers))}
 	payload = {
 		"sheet": {"v": 2, "current": tab, "sheets": {tab: {"rows": grid}}},
@@ -128,7 +138,23 @@ def open_in_sheet(slug: str) -> dict:
 	name = res["name"]
 	if name != form.sheet_name:
 		frappe.db.set_value("FF Form", form.name, "sheet_name", name, update_modified=False)
-		# New sheet: share with everyone so any Forms Manager (not just the creator)
-		# can open and refresh it. Data is already visible to them via Responses.
-		frappe.share.add("Sheet", name, user=None, write=1, share=0, everyone=1, notify=False)
+	# Grant the sheet to exactly who can already see this form's responses — its owner and anyone
+	# it's shared with — never `everyone`: the sheet holds response data (incl. PII). Re-run on
+	# every export so collaborators added after the sheet was created still get access.
+	_share_sheet_with_form_collaborators(form, name)
 	return {"sheet_name": name, "url": f"/sheets?id={name}"}
+
+
+def _share_sheet_with_form_collaborators(form, sheet_name: str):
+	"""Share the responses sheet with the form's owner and its DocShare collaborators (only)."""
+	recipients = {form.owner}
+	recipients.update(
+		frappe.get_all(
+			"DocShare",
+			filters={"share_doctype": "FF Form", "share_name": form.name},
+			pluck="user",
+		)
+	)
+	for user in recipients:
+		if user and user not in ("Guest", "Administrator"):
+			frappe.share.add("Sheet", sheet_name, user=user, write=1, share=0, notify=False)

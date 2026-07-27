@@ -10,14 +10,13 @@ from frappe.utils import cint
 from forms.api.render import _session_email
 
 
-def _receipt_recipient(specs: dict, clean: dict, captured: str | None) -> str | None:
-	"""Recipient for a receipt: the captured email, then any email answer, then the session user."""
-	if captured:
-		return captured
-	for fieldname, spec in specs.items():
-		if spec["field_type"] == "email" and clean.get(fieldname):
-			return clean[fieldname]
-	return _session_email()
+def _receipt_recipient(captured: str | None) -> str | None:
+	"""Recipient for a receipt: the collected email, else the signed-in user's own address.
+
+	Deliberately NOT an arbitrary email-type answer — routing the receipt to any address a
+	submitter types would turn the form into an email relay for its branded receipt.
+	"""
+	return captured or _session_email()
 
 
 def _format_answer(value) -> str:
@@ -42,7 +41,7 @@ def _maybe_send_receipt(form, clean: dict, specs: dict, captured_email: str | No
 	"""Email the respondent a copy of their answers (best-effort; never blocks submission)."""
 	if not cint(form.email_receipt):
 		return
-	recipient = _receipt_recipient(specs, clean, captured_email)
+	recipient = _receipt_recipient(captured_email)
 	if not recipient:
 		return
 	message = (

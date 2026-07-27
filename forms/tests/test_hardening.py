@@ -11,9 +11,12 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from forms import api
+from forms.admin.export import _formula_safe, export_csv
+from forms.api.notifications import _receipt_recipient
 from forms.api.uploads import cleanup_orphan_uploads
 from forms.compile import publish, validate_conditional_logic
 from forms.compile.doctypes import _grid_doctype_name
+from forms.tests.test_admin import _manager
 from forms.tests.test_api import published_form
 
 
@@ -176,6 +179,70 @@ class TestHardening(IntegrationTestCase):
 			"validation_pattern": r"([unclosed"})
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert(ignore_permissions=True)
+
+	# --- 10. Honeypot is silent (never reveals itself) ------------------------------------------
+	def test_honeypot_returns_fake_success_without_writing(self):
+		before = frappe.db.count("Hard Test Rec")
+		res = api.submit("hard-test", json.dumps({"full_name": "Bot"}), hp="i-am-a-bot")
+		# Looks like a success to the bot, but nothing was written.
+		self.assertIn("name", res)
+		self.assertEqual(frappe.db.count("Hard Test Rec"), before)
+
+	# --- 11. Signature must be a PNG data URL (no svg+xml script vector) -------------------------
+	def test_signature_svg_rejected_png_accepted(self):
+		spec = {"field_type": "signature", "label": "Sign", "reqd": 0, "options": []}
+		with self.assertRaises(frappe.ValidationError):
+			api._coerce_and_validate(spec, "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")
+		png = "data:image/png;base64,iVBORw0KGgo="
+		self.assertEqual(api._coerce_and_validate(spec, png), png)
+
+	# --- 12. Receipt never goes to an attacker-typed email answer -------------------------------
+	def test_receipt_recipient_ignores_arbitrary_email_answer(self):
+		# Only the collected email (or the signed-in user) may receive a receipt — never an
+		# email-type field answer, which would make the form an email relay.
+		self.assertEqual(_receipt_recipient("captured@example.com"), "captured@example.com")
+		frappe.set_user("Guest")
+		try:
+			self.assertIsNone(_receipt_recipient(None))
+		finally:
+			frappe.set_user("Administrator")
+
+	# --- 13. CSV export neutralises formula injection -------------------------------------------
+	def test_export_csv_neutralises_formula_injection(self):
+		self.assertEqual(_formula_safe("=1+2"), "'=1+2")
+		for trigger in ("+", "-", "@", "\t"):
+			self.assertTrue(_formula_safe(f"{trigger}evil").startswith("'"))
+		self.assertEqual(_formula_safe("safe"), "safe")
+
+		form = published_form("hard-csv", [
+			{"label": "Note", "field_type": "short_answer"},
+		], "Hard Csv Rec")
+		frappe.db.delete("Hard Csv Rec")
+		api.submit("hard-csv", json.dumps({"note": "=HYPERLINK(0)"}))
+		csv_text = export_csv("hard-csv")
+		self.assertIn("'=HYPERLINK(0)", csv_text)
+		self.assertNotIn(",=HYPERLINK(0)", csv_text)
+
+	# --- 14. Linked publish guardrail: can't feed a DocType the owner can't create --------------
+	def test_linked_publish_blocked_when_owner_lacks_create_and_perms_off(self):
+		# User is a good probe: a plain Forms Manager can't create Users. Without the guardrail, an
+		# apply_doc_perms-off Linked form would let a guest insert Users with ignore_permissions.
+		alice = _manager("forms_alice@example.com")
+		self.assertFalse(frappe.has_permission("User", "create", user=alice))
+		if frappe.db.exists("FF Form", {"slug": "hard-escalate"}):
+			frappe.delete_doc("FF Form", frappe.db.get_value("FF Form", {"slug": "hard-escalate"}, "name"),
+				force=True, ignore_permissions=True)
+		frappe.set_user(alice)
+		try:
+			doc = frappe.new_doc("FF Form")
+			doc.title = "Hard Escalate"; doc.slug = "hard-escalate"; doc.storage_mode = "Linked"
+			doc.target_doctype = "User"; doc.apply_doc_perms = 0; doc.collect_email = 0
+			doc.append("fields", {"label": "Name", "field_type": "short_answer", "mapped_field": "first_name"})
+			doc.insert()
+			with self.assertRaises(frappe.ValidationError):
+				publish(doc.name)
+		finally:
+			frappe.set_user("Administrator")
 
 	# --- 9. Child-DocType collision guard -------------------------------------------------------
 	def test_grid_child_names_disambiguated(self):
