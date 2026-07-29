@@ -43,7 +43,7 @@ def _block_if_duplicate(form, respondent_email: str | None):
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="slug", limit=SUBMIT_RATE_LIMIT, seconds=SUBMIT_RATE_WINDOW)
 def submit(slug: str, data: str, hp: str | None = None, token: str | None = None,
-		email: str | None = None, record: str | None = None):
+		email: str | None = None, record: str | None = None, enc_identity: str | None = None):
 	"""Validate + insert (or, with a valid edit token, update) a submission.
 
 	Returns {name}, plus {token} when the form allows editing and this is a new record.
@@ -67,8 +67,11 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 		or (token and allow_edit and form.storage_mode != "Linked"))
 
 	# Capture the respondent's email when the form collects it (typed, or the logged-in user's).
+	# On an encrypted form the email never reaches the server in the clear — the browser sealed it
+	# into enc_identity — so we don't capture, validate, or store a plaintext address here.
 	respondent_email = None
-	if cint(form.collect_email):
+	encrypted = cint(form.encrypted)
+	if cint(form.collect_email) and not encrypted:
 		respondent_email = (email or "").strip() or _session_email()
 		if not respondent_email:
 			frappe.throw("Please provide your email address.")
@@ -79,7 +82,10 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 		accepting, closed_reason = _accepting_status(form)
 		if not accepting:
 			frappe.throw(closed_reason or "This form is not accepting responses.")
-		_block_if_duplicate(form, respondent_email)
+		# One-per-user dedup keys off the plaintext email or the record owner. Encrypted forms have
+		# neither (the email is sealed, the owner is anonymised), so the rule can't be enforced.
+		if not encrypted:
+			_block_if_duplicate(form, respondent_email)
 
 	# Display-only fields (section headers) carry no data; fields hidden by conditional logic are
 	# dropped here so a hidden required field can't block the submit and hidden answers aren't stored.
@@ -107,10 +113,10 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 		else:
 			result["name"] = _insert_linked(form, clean, specs)
 	elif token and allow_edit:
-		result["name"] = _update_collection(form, clean, specs, token, respondent_email)
+		result["name"] = _update_collection(form, clean, specs, token, respondent_email, enc_identity)
 	else:
 		new_token = frappe.generate_hash(length=24) if allow_edit else None
-		result["name"] = _insert_collection(form, clean, specs, new_token, respondent_email)
+		result["name"] = _insert_collection(form, clean, specs, new_token, respondent_email, enc_identity)
 		if new_token:
 			result["token"] = new_token
 
@@ -151,7 +157,7 @@ def _apply_value(doc, fieldname: str, spec: dict, value):
 
 
 def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
-		respondent_email: str | None = None) -> str:
+		respondent_email: str | None = None, enc_identity: str | None = None) -> str:
 	doc = frappe.new_doc(form.doctype_name)
 	for fieldname, spec in specs.items():
 		value = clean.get(fieldname)
@@ -165,8 +171,21 @@ def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
 		doc.edit_token = token
 	if respondent_email and doc.meta.get_field("respondent_email"):
 		doc.respondent_email = respondent_email
+	if cint(form.encrypted):
+		# Store the sealed identity blob and keep no identifying trace on the row itself: skip the
+		# version log (its owner would be the respondent) so it can't be undone below.
+		if enc_identity and doc.meta.get_field("enc_identity"):
+			doc.enc_identity = enc_identity
+		doc.flags.ignore_version = True
 
 	doc.insert(ignore_permissions=True)
+
+	if cint(form.encrypted):
+		# The row's owner/modified_by are set to the session user on insert — for a signed-in
+		# respondent that unmasks them to anyone reading the DB. Neutralise both so identity lives
+		# ONLY inside the ciphertext blob, decryptable by the creator alone.
+		frappe.db.set_value(form.doctype_name, doc.name,
+			{"owner": "Guest", "modified_by": "Guest"}, update_modified=False)
 
 	# Own the files uploaded for this submission (they were created unattached).
 	for fieldname, spec in specs.items():
@@ -177,7 +196,7 @@ def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
 
 
 def _update_collection(form, clean: dict, specs: dict, token: str,
-		respondent_email: str | None = None) -> str:
+		respondent_email: str | None = None, enc_identity: str | None = None) -> str:
 	"""Re-save an existing submission addressed by its private edit token."""
 	name = frappe.db.get_value(form.doctype_name, {"edit_token": token}, "name")
 	if not name:
@@ -187,6 +206,10 @@ def _update_collection(form, clean: dict, specs: dict, token: str,
 		_apply_value(doc, fieldname, spec, clean.get(fieldname))
 	if respondent_email and doc.meta.get_field("respondent_email"):
 		doc.respondent_email = respondent_email
+	if cint(form.encrypted):
+		if enc_identity and doc.meta.get_field("enc_identity"):
+			doc.enc_identity = enc_identity
+		doc.flags.ignore_version = True  # the version log's owner would unmask the respondent
 	doc.save(ignore_permissions=True)
 
 	for fieldname, spec in specs.items():

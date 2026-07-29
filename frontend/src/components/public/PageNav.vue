@@ -16,6 +16,6 @@ defineEmits(['prev', 'next', 'submit', 'reset'])
       <Button v-else variant="solid" theme="gray" size="lg" :loading="submitting" @click="$emit('submit')">{{ editing ? 'Update' : 'Submit' }}</Button>
     </div>
     <span v-if="multiPage" class="text-sm text-ink-gray-5">Page {{ currentPage + 1 }} of {{ pageCount }}</span>
-    <button v-else class="text-sm text-ink-gray-5" @click="$emit('reset')">Clear form</button>
+    <Button v-else variant="ghost" theme="gray" label="Clear form" @click="$emit('reset')" />
   </div>
 </template>

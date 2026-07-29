@@ -144,7 +144,12 @@ def list_submissions(slug: str, limit: int = 50, start: int = 0) -> dict:
 		if len(display) >= 3:
 			break
 
+	encrypted = cint(form.encrypted)
 	fields = ["name", "creation"] + [d["fieldname"] for d in display]
+	# Encrypted forms carry the respondent identity as a ciphertext blob — ship it so the creator's
+	# browser can decrypt the "who" column locally (the server can't).
+	if encrypted and meta.get_field("enc_identity"):
+		fields.append("enc_identity")
 	# Only surface the triage State column once it's actually in use: some submission has been
 	# moved off the default "Pending" (or an ERPNext workflow is driving a non-Pending state). A
 	# form that never triages shouldn't show a column of identical "Pending" badges.
@@ -160,6 +165,7 @@ def list_submissions(slug: str, limit: int = 50, start: int = 0) -> dict:
 		"doctype": dt,
 		"display_fields": display,
 		"has_workflow": has_workflow,
+		"encrypted": encrypted,
 		"rows": rows,
 		"total": frappe.db.count(dt),
 	}
@@ -184,9 +190,12 @@ def get_submission(slug: str, name: str) -> dict:
 				val = f"{round(flt(val) * 5)} / 5"
 			fields.append({"label": f.label, "fieldname": fn, "value": val})
 
-	email = doc.get("respondent_email")
-	if email:
-		fields.insert(0, {"label": "Email", "fieldname": "respondent_email", "value": email})
+	# Plaintext email only for unencrypted forms. Encrypted forms return the sealed blob instead —
+	# the creator's browser decrypts it into the "who" the server itself can never read.
+	if not cint(form.encrypted):
+		email = doc.get("respondent_email")
+		if email:
+			fields.insert(0, {"label": "Email", "fieldname": "respondent_email", "value": email})
 
 	if cint(form.is_quiz) and doc.get("max_score"):
 		fields.insert(0, {"label": "Score", "fieldname": "score",
@@ -197,6 +206,8 @@ def get_submission(slug: str, name: str) -> dict:
 		"doctype": form.doctype_name,
 		"creation": str(doc.creation),
 		"workflow_state": doc.get("workflow_state"),
+		"encrypted": cint(form.encrypted),
+		"enc_identity": doc.get("enc_identity") if cint(form.encrypted) else None,
 		"fields": fields,
 		"multi": multi,
 	}

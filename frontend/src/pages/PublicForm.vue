@@ -5,6 +5,7 @@ import { Button, FormControl, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import { conditionMet } from '../fieldTypes'
 import { validateField } from '../data/validate'
+import { sealIdentity } from '../data/crypto'
 import Icon from '../components/Icon.vue'
 import RespondentField from '../components/RespondentField.vue'
 import ProgressBar from '../components/public/ProgressBar.vue'
@@ -364,13 +365,25 @@ async function submit() {
   }
   submitting.value = true
   try {
+    // Encrypted form: seal the collected email in-browser to the creator's public key and send only
+    // the ciphertext — the plaintext email never touches the network or the server.
+    let encIdentity
+    let plainEmail = form.value.collect_email ? (respondentEmail.value || '').trim() : undefined
+    if (form.value.encrypted && form.value.enc_public_key) {
+      encIdentity = await sealIdentity(form.value.enc_public_key, {
+        email: plainEmail || null,
+        user: form.value.user_email || null,
+      })
+      plainEmail = undefined // never send the plaintext address for an encrypted form
+    }
     const res = await call('forms.api.submit', {
       slug: props.slug,
       data: JSON.stringify(answers),
       hp: hp.value,
       token: editToken.value || undefined,
       record: recordName.value || undefined,
-      email: form.value.collect_email ? (respondentEmail.value || '').trim() : undefined,
+      email: plainEmail,
+      enc_identity: encIdentity,
     })
     submitResult.value = res
     if (res.token) editToken.value = res.token
@@ -427,7 +440,7 @@ async function submit() {
           <div class="mb-7">
             <h1 class="text-2xl font-semibold text-ink-gray-9 tracking-tight">{{ form.title }}</h1>
             <p v-if="form.description" class="text-base text-ink-gray-6 mt-2">{{ form.description }}</p>
-            <p class="text-sm text-ink-gray-5 mt-3.5"><span class="text-ink-red-400">*</span> Indicates a required question</p>
+            <p class="text-sm text-ink-gray-5 mt-3.5"><span class="text-ink-red-5">*</span> Indicates a required question</p>
           </div>
 
           <!-- the signed-in respondent's own past submissions -->
@@ -450,12 +463,12 @@ async function submit() {
                  @focusin="activeField = '__email__'" @pointerdown="activeField = '__email__'">
               <div class="flex flex-col gap-2.5">
                 <div class="flex flex-col gap-1">
-                  <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">Email<span class="text-ink-red-400 ml-0.5">*</span></span>
+                  <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">Email<span class="text-ink-red-5 ml-0.5">*</span></span>
                   <span class="text-[13px] text-ink-gray-5 leading-snug">Recorded with your response.</span>
                 </div>
                 <FormControl type="email" size="lg" placeholder="name@example.com"
                        :modelValue="respondentEmail" @update:modelValue="respondentEmail = $event; emailError = false" />
-                <span v-if="emailError" class="text-xs text-ink-red-500 flex items-center gap-1">
+                <span v-if="emailError" class="text-xs text-ink-red-6 flex items-center gap-1">
                   <Icon name="circle-alert" :size="12" />Enter a valid email address.
                 </span>
               </div>

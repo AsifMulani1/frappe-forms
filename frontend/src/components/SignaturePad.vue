@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { Button } from 'frappe-ui'
 
 // Minimal pointer-drawn signature pad. Emits a PNG data-URL (stored in Frappe's Signature field).
 const emit = defineEmits(['update:modelValue'])
@@ -59,6 +60,6 @@ onMounted(() => {
     <canvas ref="canvas"
             class="w-full h-[150px] rounded-md bg-surface-gray-2 touch-none cursor-crosshair"
             @pointerdown="start" @pointermove="move" @pointerup="end" @pointerleave="end" />
-    <button type="button" class="self-start text-sm text-ink-gray-6 hover:text-ink-gray-9" @click="clear">Clear</button>
+    <Button variant="ghost" theme="gray" size="sm" label="Clear" class="self-start" @click="clear" />
   </div>
 </template>

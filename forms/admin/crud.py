@@ -16,29 +16,71 @@ from forms.compile import publish as _publish
 
 
 @frappe.whitelist()
-def list_forms(view: str = "all") -> list[dict]:
-	"""Forms for a sidebar view, with LIVE response counts.
+def list_forms(
+	view: str = "all",
+	status: str = "all",
+	category: str = "all",
+	search: str = "",
+	start: int = 0,
+	page_length: int = 25,
+) -> dict:
+	"""One page of forms for a sidebar view, with LIVE response counts.
 
-	view: all | published | draft | templates | archived | shared
+	Filtering, the status-tab counts, and pagination all run in the DB so the
+	dashboard stays fast with hundreds of forms - we only load and enrich the
+	current page (the per-form get_doc + response count is the expensive part).
+
+	view:   all | templates | archived | shared
+	status: all | published | draft   (the status tabs, only meaningful for `all`)
+	Returns {forms, total, counts, categories}: `total` is the row count matching
+	the current filters (drives "Load more"), `counts` powers the status tabs, and
+	`categories` powers the template gallery's category tabs.
 	"""
 	_guard()
-	filters = {"archived": 0}
-	if view == "published":
-		filters["status"] = "Published"
-	elif view == "draft":
-		filters["status"] = "Draft"
-	elif view == "templates":
+	start = cint(start)
+	page_length = cint(page_length) or 25
+
+	filters: dict = {"archived": 0}
+	if view == "templates":
 		filters = {"is_template": 1}
 	elif view == "archived":
 		filters = {"archived": 1}
 	elif view == "shared":
 		names = _shared_names()
 		if not names:
-			return []
+			return {"forms": [], "total": 0, "counts": {}, "categories": []}
 		filters = {"name": ("in", list(names)), "archived": 0}
 
 	if view != "shared":
 		_accessible_filter(filters)
+
+	if search:
+		filters["title"] = ("like", f"%{search}%")
+
+	# Status-tab counts for the `all` view: computed over the whole view (honoring
+	# search) but ignoring the selected status, so every tab shows its true total.
+	counts: dict = {}
+	if view == "all":
+		counts = {
+			"all": frappe.db.count("FF Form", filters),
+			"published": frappe.db.count("FF Form", {**filters, "status": "Published"}),
+			"draft": frappe.db.count("FF Form", {**filters, "status": "Draft"}),
+		}
+
+	# Apply the tab selections to the page query itself.
+	if view == "all" and status in ("published", "draft"):
+		filters["status"] = status.capitalize()
+	if view == "templates" and category and category != "all":
+		filters["category"] = category
+
+	total = frappe.db.count("FF Form", filters)
+
+	# Distinct categories across all templates (not just this page) for the tabs.
+	categories: list = []
+	if view == "templates":
+		categories = sorted({
+			c for c in frappe.get_all("FF Form", filters={"is_template": 1}, pluck="category") if c
+		})
 
 	out = []
 	for f in frappe.get_all(
@@ -48,6 +90,8 @@ def list_forms(view: str = "all") -> list[dict]:
 			"target_doctype", "accent", "description", "cover_image", "category",
 			"owner", "modified", "archived", "is_template", "embed_allowed_domains"],
 		order_by="modified desc",
+		limit_start=start,
+		limit=page_length,
 	):
 		form = frappe.get_doc("FF Form", f.name)
 		responses = _response_count(form)
@@ -63,7 +107,7 @@ def list_forms(view: str = "all") -> list[dict]:
 				for ff in form.fields[:5]
 			],
 		})
-	return out
+	return {"forms": out, "total": total, "counts": counts, "categories": categories}
 
 
 @frappe.whitelist()
@@ -260,6 +304,81 @@ def duplicate_form(name: str) -> dict:
 	doc.insert()
 	frappe.db.commit()
 	return _form_dict(doc)
+
+
+@frappe.whitelist()
+def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str,
+		key_iv: str, fingerprint: str) -> dict:
+	"""Arm identity encryption for a form with a keypair generated in the creator's browser.
+
+	Only the form's creator may do this: the whole promise is that even other Forms Managers and
+	System Managers can't unmask respondents, so the private key (wrapped under the creator's
+	passphrase) is bound to the owner. We refuse to re-key a form that already has responses — the
+	old identities are sealed to the old public key and would be orphaned by a new one.
+	"""
+	_guard()
+	_require(name, "write")
+	form = frappe.get_doc("FF Form", name)
+	if form.owner != frappe.session.user:
+		frappe.throw("Only the form's creator can enable encryption.", frappe.PermissionError)
+	if not all([public_key, wrapped_key, kdf_salt, key_iv, fingerprint]):
+		frappe.throw("Incomplete key material.")
+	if form.enc_public_key and public_key != form.enc_public_key and _response_count(form) > 0:
+		frappe.throw("This form already has responses sealed to its current key — re-keying would "
+			"make them permanently unreadable.")
+	form.encrypted = 1
+	form.enc_public_key = public_key
+	form.enc_wrapped_key = wrapped_key
+	form.enc_kdf_salt = kdf_salt
+	form.enc_key_iv = key_iv
+	form.enc_fingerprint = fingerprint
+	form.save()
+	frappe.db.commit()
+	return {"encrypted": 1, "fingerprint": fingerprint}
+
+
+@frappe.whitelist()
+def disable_encryption(name: str) -> dict:
+	"""Turn encryption off (creator only). Blocked once the form is published or has responses:
+	past identities are ciphertext and un-arming can't decrypt them."""
+	_guard()
+	_require(name, "write")
+	form = frappe.get_doc("FF Form", name)
+	if form.owner != frappe.session.user:
+		frappe.throw("Only the form's creator can change encryption.", frappe.PermissionError)
+	if form.status == "Published":
+		frappe.throw("Encryption is frozen once a form is published.")
+	form.encrypted = 0
+	form.enc_public_key = form.enc_wrapped_key = form.enc_kdf_salt = None
+	form.enc_key_iv = form.enc_fingerprint = None
+	form.save()
+	frappe.db.commit()
+	return {"encrypted": 0}
+
+
+@frappe.whitelist()
+def get_encryption_key(slug: str) -> dict:
+	"""Hand the creator their wrapped private key so their browser can unlock responses.
+
+	Owner-only: other managers (even System Managers) are refused here. The wrapped key is useless
+	without the passphrase, but binding this endpoint to the creator keeps the surface tight."""
+	_guard()
+	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
+	if not name:
+		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	_require(name, "read")
+	form = frappe.get_doc("FF Form", name)
+	if form.owner != frappe.session.user:
+		frappe.throw("Only the form's creator can unlock responses.", frappe.PermissionError)
+	if not form.enc_wrapped_key:
+		frappe.throw("This form isn't encrypted.")
+	return {
+		"public_key": form.enc_public_key,
+		"wrapped_key": form.enc_wrapped_key,
+		"kdf_salt": form.enc_kdf_salt,
+		"key_iv": form.enc_key_iv,
+		"fingerprint": form.enc_fingerprint,
+	}
 
 
 @frappe.whitelist()

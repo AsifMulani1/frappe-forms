@@ -1,4 +1,5 @@
 <script setup>
+import { Button } from 'frappe-ui'
 // The signed-in respondent's own past submissions, with edit/delete affordances. Presentational;
 // the parent owns the data and performs the delete.
 defineProps({ subs: Array, meta: Object, slug: String })
@@ -24,7 +25,7 @@ function fmtDate(dt) {
         </div>
         <a v-if="s.edit_param && meta.can_edit" :href="`/forms/f/${slug}?${s.edit_param}`"
            class="text-sm text-ink-gray-7 hover:text-ink-gray-9">Edit</a>
-        <button v-if="meta.can_delete" type="button" class="text-sm text-ink-red-500 hover:text-ink-red-600" @click="$emit('delete', s.name)">Delete</button>
+        <Button v-if="meta.can_delete" variant="ghost" theme="red" size="sm" label="Delete" @click="$emit('delete', s.name)" />
       </div>
     </div>
   </div>

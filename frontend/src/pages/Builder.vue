@@ -290,10 +290,7 @@ function openShare() { shareOpen.value = true }
     <div class="h-[48px] border-b border-outline-gray-1 bg-surface-base flex items-center px-3.5 shrink-0 relative">
       <!-- left: back + title + a quiet status dot -->
       <div class="flex items-center gap-2.5 min-w-0">
-        <button class="flex items-center gap-1.5 px-2 h-8 rounded-md hover:bg-surface-gray-2 text-ink-gray-7 shrink-0 transition-colors" title="Back to all forms" @click="router.push('/')">
-          <Icon name="clipboard-list" :size="15" />
-          <span class="text-sm font-medium">Forms</span>
-        </button>
+        <Button variant="ghost" theme="gray" size="md" iconLeft="lucide-clipboard-list" label="Forms" tooltip="Back to all forms" class="shrink-0" @click="router.push('/')" />
         <Icon name="chevron-right" :size="15" class="text-ink-gray-4 shrink-0" />
         <div class="flex items-center gap-2 min-w-0">
           <span class="text-sm font-medium text-ink-gray-9 truncate max-w-[260px]">{{ form.title }}</span>
@@ -311,7 +308,7 @@ function openShare() { shareOpen.value = true }
       <div class="flex items-center gap-1.5 ml-auto">
         <span class="text-[11px] text-ink-gray-4 flex items-center gap-1 mr-1 w-[52px] justify-end">
           <template v-if="saveState === 'saving'"><Icon name="loader" :size="12" class="animate-spin" />Saving</template>
-          <template v-else-if="saveState === 'saved'"><Icon name="check" :size="12" class="text-ink-green-600" />Saved</template>
+          <template v-else-if="saveState === 'saved'"><Icon name="check" :size="12" class="text-ink-green-6" />Saved</template>
         </span>
         <!-- Form settings: one home in every mode. Dev mode gets an extra Developer tab inside. -->
         <Tooltip text="Form settings">

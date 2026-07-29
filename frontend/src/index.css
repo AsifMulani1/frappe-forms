@@ -436,15 +436,6 @@ body {
   color: #cfa1f2;
 }
 
-/* Share dialog: white people-picker input (frappe-ui Autocomplete defaults to a grey fill) */
-.ac-white button {
-  background: var(--surface-base);
-  border-color: var(--outline-gray-2);
-}
-.ac-white button:hover {
-  background: var(--surface-base);
-}
-
 /* ---- respondent (public) view ---- */
 /* Align frappe-ui TimePicker/DatePicker triggers (default md) with the lg FormControls.
    The dropdown panels are teleported, so this only touches the in-tree trigger input. */
@@ -613,6 +604,17 @@ textarea.r-input {
   color: #fff;
 }
 /* grid (matrix) question - respondent */
+/* Horizontal scroll for wide matrices, with edge shadows that appear only while
+   there's more to scroll (background-attachment: local vs scroll trick). */
+.r-grid-scroll {
+  overflow-x: auto;
+  background:
+    linear-gradient(to right, var(--surface-base) 30%, rgb(0 0 0 / 0)) 0 0 / 28px 100% no-repeat,
+    linear-gradient(to left, var(--surface-base) 30%, rgb(0 0 0 / 0)) 100% 0 / 28px 100% no-repeat,
+    radial-gradient(farthest-side at 0 50%, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0)) 0 0 / 12px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, rgb(0 0 0 / 0.1), rgb(0 0 0 / 0)) 100% 0 / 12px 100% no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
 .r-grid {
   border-collapse: collapse;
   width: 100%;

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import QRCode from 'qrcode'
-import { Autocomplete, Avatar, Button, Dialog, Dropdown, createResource, toast } from 'frappe-ui'
+import { Avatar, Button, Combobox, Dialog, Dropdown, createResource, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import { session } from '../data/session'
 import Icon from './Icon.vue'
@@ -54,10 +54,10 @@ const userOptions = computed(() => {
 })
 
 async function addPerson() {
-  if (!pickUser.value?.value) return
+  if (!pickUser.value) return
   sharing.value = true
   try {
-    await call('forms.admin.share_form', { name: props.form.name, user: pickUser.value.value, write: pickAccess.value === 'edit' ? 1 : 0 })
+    await call('forms.admin.share_form', { name: props.form.name, user: pickUser.value, write: pickAccess.value === 'edit' ? 1 : 0 })
     pickUser.value = null
     shares.reload()
     emit('changed')
@@ -97,8 +97,8 @@ function copyEmbed() {
     <template #body-content>
       <!-- add people -->
       <div class="flex items-center gap-2">
-        <div class="flex-1 min-w-0 ac-white">
-          <Autocomplete :options="userOptions" v-model="pickUser" placeholder="Add people by name or email" />
+        <div class="flex-1 min-w-0">
+          <Combobox v-model="pickUser" :options="userOptions" variant="outline" placeholder="Add people by name or email" />
         </div>
         <Dropdown :options="[
           { label: 'Can edit', onClick: () => (pickAccess = 'edit') },
@@ -178,9 +178,7 @@ function copyEmbed() {
             <span class="text-ink-gray-7">Form settings → Embedding</span>.
           </p>
           <div>
-            <button class="flex items-center gap-1.5 text-sm text-ink-gray-6 hover:text-ink-gray-9" @click="showQr = !showQr">
-              <Icon :name="showQr ? 'chevron-down' : 'chevron-right'" :size="15" />QR code
-            </button>
+            <Button variant="ghost" theme="gray" size="sm" :iconLeft="showQr ? 'lucide-chevron-down' : 'lucide-chevron-right'" label="QR code" @click="showQr = !showQr" />
             <div v-if="showQr && qr" class="flex flex-col items-center gap-2 mt-3">
               <img :src="qr" alt="QR code" class="w-[180px] h-[180px] rounded-lg border border-outline-gray-1" />
               <a :href="qr" download="form-qr.png" class="text-sm text-ink-gray-6 hover:text-ink-gray-9 flex items-center gap-1">

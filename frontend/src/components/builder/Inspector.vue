@@ -1,6 +1,6 @@
 <script setup>
 import { computed, watch } from 'vue'
-import { FormControl, Switch, createResource } from 'frappe-ui'
+import { Button, FormControl, Switch, createResource } from 'frappe-ui'
 import Icon from '../Icon.vue'
 import { FIELD_TYPES, FT, hasOptions, canHaveOther, canShuffleOptions, isText, canBeConditionSource, isGradable } from '../../fieldTypes'
 import { prefs } from '../../data/prefs'
@@ -174,7 +174,7 @@ const mapOptions = computed(() => [
         <div v-if="hasOptions(field.field_type) || field.field_type === 'yes_no'" class="flex flex-wrap gap-1.5">
           <button v-for="o in quizOptions(field)" :key="o" type="button"
                   class="px-2.5 h-7 rounded-md border text-sm transition-colors"
-                  :class="isCorrect(field, o) ? 'border-ink-green-500 bg-surface-green-2 text-ink-green-700' : 'border-outline-gray-2 text-ink-gray-7 hover:bg-surface-gray-2'"
+                  :class="isCorrect(field, o) ? 'border-outline-green-3 bg-surface-green-2 text-ink-green-8' : 'border-outline-gray-2 text-ink-gray-7 hover:bg-surface-gray-2'"
                   @click="toggleCorrect(field, o)">{{ o }}</button>
         </div>
         <FormControl v-else type="text" placeholder="Expected answer" :modelValue="field.correct_answer"
@@ -184,7 +184,7 @@ const mapOptions = computed(() => [
       <div v-if="prefs.devMode" class="px-4 py-3.5 mt-auto bg-surface-gray-1">
         <div class="flex items-center justify-between mb-2">
           <span class="text-[10.5px] text-ink-gray-5 font-mono uppercase tracking-wider">Compiles to</span>
-          <button class="text-xs text-ink-gray-7 hover:text-ink-gray-9" @click="emit('open-dev')">View schema →</button>
+          <Button variant="ghost" theme="gray" size="sm" label="View schema" iconRight="lucide-arrow-right" @click="emit('open-dev')" />
         </div>
         <div class="flex flex-col gap-1.5 font-mono text-[12px]">
           <div class="flex justify-between"><span class="text-ink-gray-5">fieldtype</span><span class="text-ink-gray-9">{{ FT[field.field_type].doctype }}</span></div>

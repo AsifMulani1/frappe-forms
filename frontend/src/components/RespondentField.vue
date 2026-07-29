@@ -39,7 +39,7 @@ function gridCbChecked(row, col) {
   <div class="flex flex-col gap-2.5">
     <div class="flex flex-col gap-1">
       <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">
-        {{ field.label }}<span v-if="field.reqd" class="text-ink-red-400 ml-0.5">*</span>
+        {{ field.label }}<span v-if="field.reqd" class="text-ink-red-5 ml-0.5">*</span>
       </span>
       <span v-if="field.help_text" class="text-[13px] text-ink-gray-5 leading-snug">{{ field.help_text }}</span>
     </div>
@@ -93,32 +93,38 @@ function gridCbChecked(row, col) {
       </span>
     </div>
 
-    <div v-else-if="field.field_type === 'linear_scale'" class="flex items-end gap-x-5 gap-y-2 flex-wrap pt-1">
-      <span v-if="field.min_label" class="text-xs text-ink-gray-5 shrink-0">{{ field.min_label }}</span>
-      <div class="flex items-center gap-3.5">
-        <button v-for="n in scaleRange(field)" :key="n" type="button" class="flex flex-col items-center gap-1.5"
-                @click="emit('set', n)">
-          <span class="text-[13px] text-ink-gray-6">{{ n }}</span>
-          <span class="r-radio" :style="value === n ? 'border-color:var(--accent)' : ''">
-            <span v-if="value === n" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
-          </span>
-        </button>
+    <div v-else-if="field.field_type === 'linear_scale'" class="pt-1">
+      <!-- Track sizes to its own content; end labels sit beneath, aligned to the first/last option. -->
+      <div class="w-fit max-w-full overflow-x-auto -mx-1 px-1">
+        <div class="flex items-center gap-x-5 gap-y-1.5 flex-wrap">
+          <button v-for="n in scaleRange(field)" :key="n" type="button" class="flex flex-col items-center gap-1.5"
+                  @click="emit('set', n)">
+            <span class="text-[13px] text-ink-gray-6">{{ n }}</span>
+            <span class="r-radio" :style="value === n ? 'border-color:var(--accent)' : ''">
+              <span v-if="value === n" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
+            </span>
+          </button>
+        </div>
+        <div v-if="field.min_label || field.max_label"
+             class="mt-2 flex justify-between gap-6 text-xs text-ink-gray-5 leading-tight">
+          <span class="text-left">{{ field.min_label }}</span>
+          <span class="text-right">{{ field.max_label }}</span>
+        </div>
       </div>
-      <span v-if="field.max_label" class="text-xs text-ink-gray-5 shrink-0">{{ field.max_label }}</span>
     </div>
 
-    <div v-else-if="field.field_type === 'mc_grid' || field.field_type === 'checkbox_grid'" class="overflow-x-auto -mx-1 px-1">
+    <div v-else-if="field.field_type === 'mc_grid' || field.field_type === 'checkbox_grid'" class="r-grid-scroll -mx-1 px-1">
       <table class="r-grid">
         <thead>
           <tr>
             <th></th>
-            <th v-for="col in field.options" :key="col" class="px-3 pb-2 text-sm font-normal text-ink-gray-6 text-center">{{ col }}</th>
+            <th v-for="col in field.options" :key="col" class="px-2 pb-2 text-[13px] font-normal text-ink-gray-6 text-center">{{ col }}</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="row in field.grid_rows" :key="row" class="border-t border-outline-gray-1">
-            <td class="py-2.5 pr-4 text-base text-ink-gray-8">{{ row }}</td>
-            <td v-for="col in field.options" :key="col" class="px-3 text-center">
+            <td class="py-2.5 pr-3 text-[15px] text-ink-gray-8">{{ row }}</td>
+            <td v-for="col in field.options" :key="col" class="px-2 text-center">
               <button v-if="field.field_type === 'mc_grid'" type="button" class="r-radio mx-auto"
                       :style="gridMcChecked(row, col) ? 'border-color:var(--accent)' : ''" @click="emit('setGridMc', { row, col })">
                 <span v-if="gridMcChecked(row, col)" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
@@ -163,7 +169,7 @@ function gridCbChecked(row, col) {
       </div>
     </div>
 
-    <span v-if="error" class="text-xs text-ink-red-500 flex items-center gap-1">
+    <span v-if="error" class="text-xs text-ink-red-6 flex items-center gap-1">
       <Icon name="circle-alert" :size="12" />{{ typeof error === 'string' ? error : 'This field is required.' }}
     </span>
   </div>

@@ -1,23 +1,22 @@
 <script setup>
 import { computed } from 'vue'
-import * as lucide from 'lucide-vue-next'
 
+// Renders a lucide icon via frappe-ui's `lucide-*` mask classes (from the
+// tailwind lucideIconsPlugin) — no per-icon Vue component, so lucide-vue-next
+// is no longer bundled. The class is dynamic, so every name used here must be
+// safelisted in tailwind.config.js. Size drives `font-size` because the mask
+// class sizes itself as a `1em` square; colour inherits via `currentColor`.
 const props = defineProps({
   name: { type: String, required: true },
   size: { type: [Number, String], default: 16 },
-  strokeWidth: { type: [Number, String], default: 1.75 },
 })
 
-// Map kebab-case lucide names ("circle-dot") to the PascalCase component export.
-const cmp = computed(() => {
-  const pascal = props.name
-    .split('-')
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
-    .join('')
-  return lucide[pascal] || lucide['Square']
-})
+const iconClass = computed(() =>
+  props.name.startsWith('lucide-') ? props.name : `lucide-${props.name}`,
+)
+const fontSize = computed(() => `${Number(props.size)}px`)
 </script>
 
 <template>
-  <component :is="cmp" :size="Number(size)" :stroke-width="Number(strokeWidth)" />
+  <span :class="[iconClass, 'inline-block']" :style="{ fontSize }" aria-hidden="true" />
 </template>

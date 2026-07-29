@@ -1,5 +1,5 @@
 <script setup>
-import { Button, Checkbox, FormControl, Switch, confirmDialog } from 'frappe-ui'
+import { Button, Checkbox, FormControl, Select, Switch, confirmDialog } from 'frappe-ui'
 import Icon from '../Icon.vue'
 import FieldTypePicker from './FieldTypePicker.vue'
 import { FT, isLayout, canHaveOther, canShuffleOptions, isText, isGrid, canBeConditionSource, isGradable, hasOptions } from '../../fieldTypes'
@@ -17,6 +17,23 @@ const emit = defineEmits([
   'select', 'update-meta', 'update-field', 'delete', 'duplicate', 'move', 'reorder', 'add',
   'delete-many', 'duplicate-many', 'required-many',
 ])
+
+// Static option lists for the field-config Selects.
+const scaleMinOptions = [0, 1].map((n) => ({ label: String(n), value: n }))
+const scaleMaxOptions = [2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => ({ label: String(n), value: n }))
+const conditionOperatorOptions = [
+  { label: 'equals', value: 'equals' },
+  { label: 'is not', value: 'not_equals' },
+  { label: 'contains', value: 'contains' },
+]
+const conditionFieldOptions = (f) => [
+  { label: 'Always show', value: '' },
+  ...priorSources(f).map((s) => ({ label: `Show if “${s.label}”`, value: s.field_key })),
+]
+const conditionValueSelectOptions = (f) => [
+  { label: 'Choose a value', value: '' },
+  ...conditionValueOptions(f).map((v) => ({ label: v, value: v })),
+]
 
 // Multi-select for bulk actions, derived from the live field list so "select all" tracks edits.
 const {
@@ -197,13 +214,13 @@ function toggleCorrect(field, opt) {
                  :class="isLayout(f.field_type) ? 'text-[18px] font-semibold text-ink-gray-9' : 'text-[15px] font-medium text-ink-gray-9'"
                  :value="f.label" :placeholder="isLayout(f.field_type) ? 'Section title' : 'Question label'"
                  @click.stop @input="emit('update-field', f.name, { label: $event.target.value })" />
-          <span v-if="f.reqd && !isLayout(f.field_type)" class="text-base text-ink-red-500 shrink-0 -ml-0.5" title="Required">*</span>
+          <span v-if="f.reqd && !isLayout(f.field_type)" class="text-base text-ink-red-6 shrink-0 -ml-0.5" title="Required">*</span>
           <!-- actions on the same row as the label, so selecting never grows the card -->
           <div v-if="selectedId === f.name" class="flex items-center gap-0.5 shrink-0 ml-auto pl-2" @click.stop>
-            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-gray-6 disabled:opacity-30" :disabled="i === 0" title="Move up" @click="emit('move', f.name, -1)"><Icon name="chevron-up" :size="15" /></button>
-            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-gray-6 disabled:opacity-30" :disabled="i === form.fields.length - 1" title="Move down" @click="emit('move', f.name, 1)"><Icon name="chevron-down" :size="15" /></button>
-            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-gray-6" title="Duplicate" @click="emit('duplicate', f.name)"><Icon name="copy" :size="14" /></button>
-            <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-red-500" title="Delete" @click="emit('delete', f.name)"><Icon name="trash-2" :size="14" /></button>
+            <Button variant="ghost" theme="gray" size="sm" icon="lucide-chevron-up" :disabled="i === 0" tooltip="Move up" @click="emit('move', f.name, -1)" />
+            <Button variant="ghost" theme="gray" size="sm" icon="lucide-chevron-down" :disabled="i === form.fields.length - 1" tooltip="Move down" @click="emit('move', f.name, 1)" />
+            <Button variant="ghost" theme="gray" size="sm" icon="lucide-copy" tooltip="Duplicate" @click="emit('duplicate', f.name)" />
+            <Button variant="ghost" theme="red" size="sm" icon="lucide-trash-2" tooltip="Delete" @click="emit('delete', f.name)" />
           </div>
         </div>
         <input v-if="f.help_text || selectedId === f.name" class="edit-line text-[13px] text-ink-gray-5 mb-1"
@@ -332,32 +349,30 @@ function toggleCorrect(field, opt) {
           <!-- linear scale: range + end labels -->
           <div v-if="f.field_type === 'linear_scale'" class="flex flex-wrap items-end gap-3">
             <label class="flex flex-col gap-1"><span class="text-[12px] text-ink-gray-6">From</span>
-              <select class="cfg-input w-[64px]" :value="f.scale_min ?? 1" @change="emit('update-field', f.name, { scale_min: +$event.target.value })">
-                <option v-for="n in [0, 1]" :key="n" :value="n">{{ n }}</option>
-              </select></label>
+              <Select class="w-[64px]" :modelValue="f.scale_min ?? 1" :options="scaleMinOptions"
+                      @update:modelValue="emit('update-field', f.name, { scale_min: $event })" /></label>
             <label class="flex flex-col gap-1"><span class="text-[12px] text-ink-gray-6">To</span>
-              <select class="cfg-input w-[64px]" :value="f.scale_max ?? 5" @change="emit('update-field', f.name, { scale_max: +$event.target.value })">
-                <option v-for="n in [2, 3, 4, 5, 6, 7, 8, 9, 10]" :key="n" :value="n">{{ n }}</option>
-              </select></label>
-            <input class="cfg-input flex-1 min-w-[120px]" :value="f.min_label" placeholder="Label for low (optional)"
-                   @input="emit('update-field', f.name, { min_label: $event.target.value })" />
-            <input class="cfg-input flex-1 min-w-[120px]" :value="f.max_label" placeholder="Label for high (optional)"
-                   @input="emit('update-field', f.name, { max_label: $event.target.value })" />
+              <Select class="w-[64px]" :modelValue="f.scale_max ?? 5" :options="scaleMaxOptions"
+                      @update:modelValue="emit('update-field', f.name, { scale_max: $event })" /></label>
+            <FormControl type="text" class="flex-1 min-w-[120px]" :modelValue="f.min_label" placeholder="Label for low (optional)"
+                         @update:modelValue="emit('update-field', f.name, { min_label: $event })" />
+            <FormControl type="text" class="flex-1 min-w-[120px]" :modelValue="f.max_label" placeholder="Label for high (optional)"
+                         @update:modelValue="emit('update-field', f.name, { max_label: $event })" />
           </div>
 
           <!-- number: min / max -->
           <div v-if="f.field_type === 'number'" class="flex items-end gap-3">
-            <input class="cfg-input w-[100px]" :value="f.min_value" placeholder="Min" inputmode="numeric"
-                   @input="emit('update-field', f.name, { min_value: $event.target.value })" />
-            <input class="cfg-input w-[100px]" :value="f.max_value" placeholder="Max" inputmode="numeric"
-                   @input="emit('update-field', f.name, { max_value: $event.target.value })" />
+            <FormControl type="text" inputmode="numeric" class="w-[100px]" :modelValue="f.min_value" placeholder="Min"
+                         @update:modelValue="emit('update-field', f.name, { min_value: $event })" />
+            <FormControl type="text" inputmode="numeric" class="w-[100px]" :modelValue="f.max_value" placeholder="Max"
+                         @update:modelValue="emit('update-field', f.name, { max_value: $event })" />
           </div>
 
           <!-- text: max length -->
           <div v-if="isText(f.field_type)" class="flex items-center gap-2">
             <span class="text-sm text-ink-gray-7">Max length</span>
-            <input class="cfg-input w-[100px]" :value="f.max_length || ''" placeholder="No limit" inputmode="numeric"
-                   @input="emit('update-field', f.name, { max_length: +$event.target.value || 0 })" />
+            <FormControl type="text" inputmode="numeric" class="w-[100px]" :modelValue="f.max_length || ''" placeholder="No limit"
+                         @update:modelValue="emit('update-field', f.name, { max_length: +$event || 0 })" />
           </div>
 
           <!-- choice: shuffle + other -->
@@ -370,25 +385,15 @@ function toggleCorrect(field, opt) {
           <div v-if="!isLayout(f.field_type) && priorSources(f).length" class="flex flex-col gap-2 pt-1">
             <div class="flex items-center gap-2 text-[12px] text-ink-gray-6"><Icon name="git-branch" :size="13" />Conditional logic</div>
             <div class="flex flex-wrap items-center gap-2">
-              <select class="cfg-input min-w-[150px]" :value="f.condition_field || ''"
-                      @change="emit('update-field', f.name, { condition_field: $event.target.value })">
-                <option value="">Always show</option>
-                <option v-for="s in priorSources(f)" :key="s.field_key" :value="s.field_key">Show if “{{ s.label }}”</option>
-              </select>
+              <Select class="min-w-[150px]" :modelValue="f.condition_field || ''" :options="conditionFieldOptions(f)"
+                      @update:modelValue="emit('update-field', f.name, { condition_field: $event })" />
               <template v-if="f.condition_field">
-                <select class="cfg-input w-[120px]" :value="f.condition_operator || 'equals'"
-                        @change="emit('update-field', f.name, { condition_operator: $event.target.value })">
-                  <option value="equals">equals</option>
-                  <option value="not_equals">is not</option>
-                  <option value="contains">contains</option>
-                </select>
-                <select v-if="conditionValueOptions(f).length" class="cfg-input min-w-[120px]" :value="f.condition_value || ''"
-                        @change="emit('update-field', f.name, { condition_value: $event.target.value })">
-                  <option value="">Choose a value</option>
-                  <option v-for="v in conditionValueOptions(f)" :key="v" :value="v">{{ v }}</option>
-                </select>
-                <input v-else class="cfg-input min-w-[120px]" :value="f.condition_value" placeholder="Value"
-                       @input="emit('update-field', f.name, { condition_value: $event.target.value })" />
+                <Select class="w-[120px]" :modelValue="f.condition_operator || 'equals'" :options="conditionOperatorOptions"
+                        @update:modelValue="emit('update-field', f.name, { condition_operator: $event })" />
+                <Select v-if="conditionValueOptions(f).length" class="min-w-[120px]" :modelValue="f.condition_value || ''" :options="conditionValueSelectOptions(f)"
+                        @update:modelValue="emit('update-field', f.name, { condition_value: $event })" />
+                <FormControl v-else type="text" class="min-w-[120px]" :modelValue="f.condition_value" placeholder="Value"
+                             @update:modelValue="emit('update-field', f.name, { condition_value: $event })" />
               </template>
             </div>
           </div>
@@ -398,21 +403,21 @@ function toggleCorrect(field, opt) {
             <div class="flex items-center gap-2">
               <Icon name="award" :size="13" class="text-ink-gray-6" />
               <span class="text-sm text-ink-gray-7">Points</span>
-              <input class="cfg-input w-[80px]" :value="f.points || ''" placeholder="0" inputmode="numeric"
-                     @input="emit('update-field', f.name, { points: +$event.target.value || 0 })" />
+              <FormControl type="text" inputmode="numeric" class="w-[80px]" :modelValue="f.points || ''" placeholder="0"
+                           @update:modelValue="emit('update-field', f.name, { points: +$event || 0 })" />
             </div>
             <div class="flex flex-col gap-1.5">
               <span class="text-[12px] text-ink-gray-6">Correct answer</span>
               <div v-if="hasOptions(f.field_type) || f.field_type === 'yes_no'" class="flex flex-wrap gap-1.5">
                 <button v-for="o in quizOptions(f)" :key="o" type="button"
                         class="px-2.5 h-7 rounded-md border text-sm transition-colors"
-                        :class="isCorrect(f, o) ? 'border-ink-green-500 bg-surface-green-2 text-ink-green-700' : 'border-outline-gray-2 text-ink-gray-7 hover:bg-surface-gray-2'"
+                        :class="isCorrect(f, o) ? 'border-outline-green-3 bg-surface-green-2 text-ink-green-8' : 'border-outline-gray-2 text-ink-gray-7 hover:bg-surface-gray-2'"
                         @click="toggleCorrect(f, o)">
-                  <Icon v-if="isCorrect(f, o)" name="check" :size="12" class="inline -mt-0.5 mr-1" />{{ o }}
+                  <Icon v-if="isCorrect(f, o)" name="check" :size="12" class="-mt-0.5 mr-1" />{{ o }}
                 </button>
               </div>
-              <input v-else class="cfg-input max-w-[280px]" :value="f.correct_answer" placeholder="Expected answer"
-                     @input="emit('update-field', f.name, { correct_answer: $event.target.value })" />
+              <FormControl v-else type="text" class="max-w-[280px]" :modelValue="f.correct_answer" placeholder="Expected answer"
+                           @update:modelValue="emit('update-field', f.name, { correct_answer: $event })" />
             </div>
           </div>
         </div>

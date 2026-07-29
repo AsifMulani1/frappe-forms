@@ -75,8 +75,18 @@ class TestAdminAuth(IntegrationTestCase):
 	def test_list_forms_scoped_to_owner(self):
 		form = self._alice_form()
 		frappe.set_user(self.bob)
-		names = [f["name"] for f in admin.list_forms("all")]
+		names = [f["name"] for f in admin.list_forms("all")["forms"]]
 		self.assertNotIn(form["name"], names, "Bob must not see Alice's form in his list")
+
+	def test_list_forms_paginates(self):
+		"""list_forms returns one page plus a total, so the dashboard loads fast at scale."""
+		frappe.set_user(self.alice)
+		for _ in range(3):
+			admin.create_form()
+		page = admin.list_forms("all", start=0, page_length=2)
+		self.assertLessEqual(len(page["forms"]), 2, "a page must not exceed page_length")
+		self.assertGreaterEqual(page["total"], 3, "total counts every matching form, not just the page")
+		self.assertGreaterEqual(page["counts"]["all"], 3, "status-tab counts cover the whole view")
 
 	def test_redirect_url_must_be_safe(self):
 		form = self._alice_form()

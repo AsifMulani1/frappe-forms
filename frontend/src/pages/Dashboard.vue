@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Badge, Button, Checkbox, Dropdown, FormControl, TabButtons, createResource, confirmDialog, toast } from 'frappe-ui'
+import { Badge, Button, Checkbox, Dropdown, FormControl, TabButtons, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import Icon from '../components/Icon.vue'
 import AppShell from '../components/AppShell.vue'
@@ -39,36 +39,74 @@ const showMetrics = computed(() => !(activeView.value === 'all' && statusTab.val
 const CHOICE_TYPES = ['single_choice', 'dropdown', 'checkboxes']
 function isChoice(t) { return CHOICE_TYPES.includes(t) }
 
-const forms = createResource({
-  url: 'forms.admin.list_forms',
-  makeParams: () => ({ view: activeView.value }),
-  auto: true,
-})
-watch(activeView, () => { statusTab.value = 'all'; forms.reload() })
-
-const statusButtons = computed(() => {
-  const list = forms.data || []
-  return [
-    { label: `All ${list.length}`, value: 'all' },
-    { label: `Published ${list.filter((f) => f.status === 'Published').length}`, value: 'published' },
-    { label: `Drafts ${list.filter((f) => f.status === 'Draft').length}`, value: 'draft' },
-  ]
-})
-
+// Server-side pagination: we load one page at a time and append on "Load more".
+// Filtering, the status-tab counts, and the template categories all come from the
+// DB so the list stays fast with hundreds of forms (see forms.admin.list_forms).
+const PAGE_LENGTH = 25
 const categoryTab = ref('all')
-watch(activeView, () => { categoryTab.value = 'all' })
-const categoryButtons = computed(() => {
-  const cats = [...new Set((forms.data || []).map((f) => f.category).filter(Boolean))].sort()
-  return [{ label: 'All', value: 'all' }, ...cats.map((c) => ({ label: c, value: c }))]
+const items = ref([])
+const total = ref(0)
+const counts = ref({ all: 0, published: 0, draft: 0 })
+const categories = ref([])
+const loading = ref(false)
+const loadingMore = ref(false)
+
+const rows = computed(() => items.value)
+const hasMore = computed(() => items.value.length < total.value)
+
+async function fetchForms({ append = false, keep = false } = {}) {
+  const start = append ? items.value.length : 0
+  // On a plain refresh (keep), reload as many rows as are already on screen so an
+  // archive/delete doesn't collapse the list back to a single page.
+  const pageLength = append ? PAGE_LENGTH : keep ? Math.max(PAGE_LENGTH, items.value.length) : PAGE_LENGTH
+  if (append) loadingMore.value = true
+  else loading.value = true
+  try {
+    const res = await call('forms.admin.list_forms', {
+      view: activeView.value,
+      status: statusTab.value,
+      category: categoryTab.value,
+      search: search.value.trim(),
+      start,
+      page_length: pageLength,
+    })
+    items.value = append ? items.value.concat(res.forms) : res.forms
+    total.value = res.total
+    if (res.counts && Object.keys(res.counts).length) counts.value = res.counts
+    categories.value = res.categories || []
+  } finally {
+    loading.value = false
+    loadingMore.value = false
+  }
+}
+function loadMore() { fetchForms({ append: true }) }
+
+// Any view/filter change resets to the first page. Switching view also resets the
+// tabs — if that reset itself changes a tab, the [statusTab, categoryTab] watcher
+// does the refetch, so we only fetch here when nothing changed (avoids a double load).
+fetchForms()
+watch(activeView, () => {
+  const tabsChanged = statusTab.value !== 'all' || categoryTab.value !== 'all'
+  statusTab.value = 'all'
+  categoryTab.value = 'all'
+  if (!tabsChanged) fetchForms()
+})
+watch([statusTab, categoryTab], () => fetchForms())
+let searchTimer = null
+watch(search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => fetchForms(), 250)
 })
 
-const rows = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  return (forms.data || [])
-    .filter((f) => !showStatusTabs.value || statusTab.value === 'all' || f.status.toLowerCase() === statusTab.value)
-    .filter((f) => !isTemplates.value || categoryTab.value === 'all' || f.category === categoryTab.value)
-    .filter((f) => !q || f.title.toLowerCase().includes(q))
-})
+const statusButtons = computed(() => [
+  { label: `All ${counts.value.all}`, value: 'all' },
+  { label: `Published ${counts.value.published}`, value: 'published' },
+  { label: `Drafts ${counts.value.draft}`, value: 'draft' },
+])
+
+const categoryButtons = computed(() =>
+  [{ label: 'All', value: 'all' }, ...categories.value.map((c) => ({ label: c, value: c }))],
+)
 
 function ago(dt) {
   if (!dt) return '-'
@@ -91,7 +129,7 @@ function cardSubtitle(f) {
 }
 
 function refresh() {
-  forms.reload()
+  fetchForms({ keep: true })
   shell.value?.refreshCounts?.()
 }
 
@@ -251,7 +289,7 @@ function openShare(f) {
         </div>
 
         <!-- loading skeleton -->
-        <div v-if="forms.loading && !forms.data" class="flex flex-col gap-2">
+        <div v-if="loading && !items.length" class="flex flex-col gap-2">
           <div v-for="i in 5" :key="i" class="h-[52px] rounded-[10px] bg-surface-gray-2 animate-pulse" />
         </div>
 
@@ -289,7 +327,7 @@ function openShare(f) {
                 <div class="text-sm font-semibold text-ink-gray-9 pb-2.5 border-b border-outline-gray-1 truncate">{{ f.title }}</div>
                 <div v-for="(fld, i) in (f.preview || []).slice(0, 3)" :key="i" class="flex flex-col gap-1">
                   <span class="text-[11px] font-medium text-ink-gray-7 truncate">
-                    {{ fld.label }}<span v-if="fld.reqd" class="text-ink-red-500">&nbsp;*</span>
+                    {{ fld.label }}<span v-if="fld.reqd" class="text-ink-red-6">&nbsp;*</span>
                   </span>
                   <div v-if="fld.field_type === 'paragraph'" class="h-9 rounded-md border border-outline-gray-2 bg-surface-gray-1" />
                   <div v-else class="relative h-6 rounded-md border border-outline-gray-2 bg-surface-gray-1">
@@ -385,6 +423,11 @@ function openShare(f) {
             </div>
             <span class="block text-sm text-ink-gray-5 mt-1.5">{{ cardSubtitle(f) }}</span>
           </div>
+        </div>
+
+        <!-- load more: one page at a time keeps the initial load fast at scale -->
+        <div v-if="rows.length && hasMore" class="flex justify-center mt-6">
+          <Button variant="subtle" theme="gray" :loading="loadingMore" @click="loadMore">Load more</Button>
         </div>
       </div>
     </div>

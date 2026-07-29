@@ -63,8 +63,8 @@ const perms = computed(() => preview.data?.permissions || [])
             <Icon :name="linked ? 'link' : 'database'" :size="14" class="text-ink-gray-6" />
             <span class="font-mono text-sm text-ink-gray-8">{{ preview.data?.name }}</span>
           </div>
-          <span class="flex items-center gap-1.5 text-xs text-ink-green-600">
-            <span class="w-[7px] h-[7px] rounded-full bg-green-500" />in sync
+          <span class="flex items-center gap-1.5 text-xs text-ink-green-6">
+            <span class="w-[7px] h-[7px] rounded-full bg-surface-green-7" />in sync
           </span>
         </div>
         <div class="code-surface" v-if="preview.data">
