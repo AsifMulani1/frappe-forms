@@ -1,8 +1,9 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Avatar, Badge, Button, createResource, toast } from 'frappe-ui'
+import { Avatar, Badge, Button, Dialog, FormControl, createResource, toast } from 'frappe-ui'
 import { call } from '../data/call'
+import { unwrapPrivateKey, openIdentity } from '../data/crypto'
 import Icon from '../components/Icon.vue'
 import { prefs } from '../data/prefs'
 
@@ -32,6 +33,60 @@ const subs = createResource({ url: 'forms.admin.list_submissions', params: { slu
 
 const stateTheme = { Confirmed: 'green', Pending: 'orange', Waitlist: 'blue' }
 
+// --- Encrypted responses ---------------------------------------------------
+// The identity of each respondent is sealed to the creator's key. Unlocking asks for the passphrase,
+// unwraps the private key IN THIS BROWSER, and decrypts each row's blob locally — the server only
+// ever held ciphertext. The key lives in memory for the session and is never persisted.
+const encrypted = computed(() => !!subs.data?.encrypted)
+const privKey = ref(null)
+const unlocked = computed(() => !!privKey.value)
+const unlockOpen = ref(false)
+const passphrase = ref('')
+const unlockErr = ref('')
+const unlocking = ref(false)
+const identities = reactive({}) // record name -> decrypted email string
+const drawerEmail = ref(null)
+
+async function decryptRow(name, blob) {
+  if (!blob || identities[name] !== undefined) return
+  try {
+    const id = await openIdentity(privKey.value, blob)
+    identities[name] = id.email || id.user || '—'
+  } catch (e) {
+    identities[name] = '⚠ Undecryptable'
+  }
+}
+async function decryptLoadedRows() {
+  if (!unlocked.value) return
+  for (const r of subs.data?.rows || []) await decryptRow(r.name, r.enc_identity)
+}
+watch([() => subs.data, unlocked], decryptLoadedRows)
+
+async function doUnlock() {
+  unlockErr.value = ''
+  if (!passphrase.value) { unlockErr.value = 'Enter your passphrase.'; return }
+  unlocking.value = true
+  try {
+    const k = await call('forms.admin.get_encryption_key', { slug: props.slug })
+    privKey.value = await unwrapPrivateKey(k.wrapped_key, k.kdf_salt, k.key_iv, passphrase.value)
+    unlockOpen.value = false
+    passphrase.value = ''
+    await decryptLoadedRows()
+    toast.success('Responses unlocked')
+  } catch (e) {
+    // A wrong passphrase surfaces as an AES-GCM auth failure from unwrap.
+    unlockErr.value = e.messages?.[0] || 'Incorrect passphrase.'
+  } finally {
+    unlocking.value = false
+  }
+}
+
+// The "who" for a row: decrypted email (encrypted forms) or the first display answer.
+function respondentLabel(r) {
+  if (encrypted.value) return unlocked.value ? (identities[r.name] || '…') : 'Encrypted'
+  return r[subs.data.display_fields[0]?.fieldname] || '-'
+}
+
 function fmtDate(dt) {
   if (!dt) return '-'
   return new Date(dt.replace(' ', 'T')).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
@@ -42,7 +97,16 @@ function maxN(data) {
 
 async function openRecord(name) {
   openRec.value = name
+  drawerEmail.value = null
   drawer.value = await call('forms.admin.get_submission', { slug: props.slug, name })
+  if (drawer.value?.encrypted && unlocked.value && drawer.value.enc_identity) {
+    try {
+      const id = await openIdentity(privKey.value, drawer.value.enc_identity)
+      drawerEmail.value = id.email || id.user || '—'
+    } catch (e) {
+      drawerEmail.value = '⚠ Undecryptable'
+    }
+  }
 }
 async function setState(state) {
   await call('forms.admin.set_workflow_state', { slug: props.slug, name: openRec.value, state })
@@ -101,6 +165,12 @@ async function exportCsv() {
             </button>
           </div>
           <div class="flex items-center gap-2">
+            <Button v-if="encrypted && !unlocked" variant="solid" theme="gray" @click="unlockOpen = true">
+              <template #prefix><Icon name="lock" :size="15" /></template>Unlock responses
+            </Button>
+            <Badge v-else-if="encrypted" theme="green">
+              <template #prefix><Icon name="lock-open" :size="12" /></template>Unlocked
+            </Badge>
             <Button variant="outline" theme="gray" :loading="sheetLoading" @click="openSheet">
               <template #prefix><Icon name="table-2" :size="15" /></template>Open in Frappe Sheets
             </Button>
@@ -185,10 +255,13 @@ async function exportCsv() {
                class="flex items-center gap-3 px-4 h-[52px] cursor-pointer border-t border-outline-gray-1 first:border-t-0 hover:bg-surface-gray-1 transition-colors"
                @click="openRecord(r.name)">
             <div class="flex items-center gap-2.5 flex-1 min-w-0">
-              <Avatar :label="r[subs.data.display_fields[0]?.fieldname] || r.name" size="sm" />
+              <Avatar v-if="!encrypted || unlocked" :label="respondentLabel(r)" size="sm" />
+              <div v-else class="flex items-center justify-center h-6 w-6 rounded-full bg-surface-gray-3 text-ink-gray-5 shrink-0">
+                <Icon name="lock" :size="12" />
+              </div>
               <div class="flex flex-col min-w-0">
-                <span class="text-sm text-ink-gray-9 truncate">{{ r[subs.data.display_fields[0]?.fieldname] || '-' }}</span>
-                <span class="text-[11px] text-ink-gray-5 truncate">{{ r[subs.data.display_fields[1]?.fieldname] || '' }}</span>
+                <span class="text-sm truncate" :class="encrypted && !unlocked ? 'text-ink-gray-5 italic' : 'text-ink-gray-9'">{{ respondentLabel(r) }}</span>
+                <span v-if="!encrypted" class="text-[11px] text-ink-gray-5 truncate">{{ r[subs.data.display_fields[1]?.fieldname] || '' }}</span>
               </div>
             </div>
             <span v-if="subs.data?.has_workflow" class="w-[100px]">
@@ -227,6 +300,16 @@ async function exportCsv() {
           </div>
 
           <div class="flex-1 overflow-y-auto p-4">
+            <!-- encrypted identity: decrypted locally, or a prompt to unlock -->
+            <div v-if="drawer.encrypted" class="mb-4 rounded-md border border-outline-gray-1 bg-surface-gray-1 p-3 flex items-center gap-2.5">
+              <Icon :name="unlocked ? 'shield-check' : 'lock'" :size="15" :class="unlocked ? 'text-ink-green-600' : 'text-ink-gray-5'" />
+              <div class="flex flex-col min-w-0 flex-1">
+                <span class="text-[11px] text-ink-gray-5">Respondent (encrypted)</span>
+                <span class="text-sm text-ink-gray-9 truncate">{{ unlocked ? (drawerEmail || '—') : 'Locked' }}</span>
+              </div>
+              <Button v-if="!unlocked" variant="subtle" theme="gray" size="sm" @click="unlockOpen = true">Unlock</Button>
+            </div>
+
             <span class="text-[10px] text-ink-gray-5 font-mono uppercase tracking-wider">Record fields</span>
             <div class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-base mt-2">
               <div class="flex items-center justify-between px-3 py-2.5 border-t border-outline-gray-1 first:border-t-0">
@@ -255,5 +338,26 @@ async function exportCsv() {
         </div>
       </template>
     </div>
+
+    <!-- Unlock: passphrase → unwrap the private key in-browser. Never sent to the server. -->
+    <Dialog v-model="unlockOpen" :options="{ title: 'Unlock responses' }">
+      <template #body-content>
+        <div class="flex flex-col gap-4">
+          <p class="text-[13px] leading-5 text-ink-gray-6">
+            Enter the passphrase you set when enabling encryption. It decrypts who responded in your
+            browser — the server never sees it.
+          </p>
+          <FormControl type="password" label="Passphrase" autocomplete="off"
+            :modelValue="passphrase" @update:modelValue="passphrase = $event; unlockErr = ''"
+            @keyup.enter="doUnlock" />
+          <span v-if="unlockErr" class="text-xs text-ink-red-500 flex items-center gap-1">
+            <Icon name="circle-alert" :size="12" />{{ unlockErr }}
+          </span>
+        </div>
+      </template>
+      <template #actions>
+        <Button variant="solid" theme="gray" class="w-full" :loading="unlocking" @click="doUnlock">Unlock</Button>
+      </template>
+    </Dialog>
   </div>
 </template>

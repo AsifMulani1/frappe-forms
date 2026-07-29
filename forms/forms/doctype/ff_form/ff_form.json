@@ -45,6 +45,13 @@
   "quiz_section",
   "is_quiz",
   "show_score",
+  "encryption_section",
+  "encrypted",
+  "enc_public_key",
+  "enc_wrapped_key",
+  "enc_kdf_salt",
+  "enc_key_iv",
+  "enc_fingerprint",
   "fields_section",
   "fields"
  ],
@@ -308,6 +315,52 @@
    "fieldname": "show_score",
    "fieldtype": "Check",
    "label": "Show score after submit"
+  },
+  {
+   "fieldname": "encryption_section",
+   "fieldtype": "Section Break",
+   "label": "Encryption"
+  },
+  {
+   "default": "0",
+   "description": "End-to-end encrypt the respondent's identity to the creator's key. Only the creator (with the passphrase) can see who submitted — not other Forms Managers, not System Managers, not anyone reading the database.",
+   "fieldname": "encrypted",
+   "fieldtype": "Check",
+   "label": "Encrypt respondent identity",
+   "read_only": 1
+  },
+  {
+   "description": "Creator's public key (ECDH P-256, base64). Respondents seal their identity to this. Public by design.",
+   "fieldname": "enc_public_key",
+   "fieldtype": "Small Text",
+   "label": "Public Key",
+   "read_only": 1
+  },
+  {
+   "description": "Creator's private key, encrypted under the creator's passphrase (never stored in the clear).",
+   "fieldname": "enc_wrapped_key",
+   "fieldtype": "Small Text",
+   "label": "Wrapped Private Key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "enc_kdf_salt",
+   "fieldtype": "Data",
+   "label": "KDF Salt",
+   "read_only": 1
+  },
+  {
+   "fieldname": "enc_key_iv",
+   "fieldtype": "Data",
+   "label": "Wrap IV",
+   "read_only": 1
+  },
+  {
+   "description": "Short hash of the public key. The creator verifies this to detect a swapped key.",
+   "fieldname": "enc_fingerprint",
+   "fieldtype": "Data",
+   "label": "Key Fingerprint",
+   "read_only": 1
   },
   {
    "fieldname": "fields_section",

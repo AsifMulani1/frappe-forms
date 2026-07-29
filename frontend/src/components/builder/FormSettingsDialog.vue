@@ -1,12 +1,14 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import {
-  Badge, Button, DateTimePicker, FileUploader, FormControl, Switch, TabButtons, createResource,
-  SettingsDialog, SettingsSidebar, SettingsNavGroup, SettingsNavItem,
+  Badge, Button, DateTimePicker, Dialog, FileUploader, FormControl, Switch, TabButtons, createResource,
+  toast, SettingsDialog, SettingsSidebar, SettingsNavGroup, SettingsNavItem,
   SettingsContent, SettingsPanel, SettingsHeader, SettingsBody, SettingsRow,
 } from 'frappe-ui'
 import Icon from '../Icon.vue'
 import { prefs } from '../../data/prefs'
+import { call } from '../../data/call'
+import { generateKeypair, wrapPrivateKey, fingerprint } from '../../data/crypto'
 
 // Form-level settings, opened from the builder's gear icon. Per-field settings live inline on
 // the card (direct manipulation); these form-wide options are touched rarely, so they live in a
@@ -55,6 +57,7 @@ function openDev() {
 const NAV = [
   { group: 'Form', items: [
     { value: 'access', label: 'Access', icon: 'lock' },
+    { value: 'encryption', label: 'Encryption', icon: 'shield' },
     { value: 'schedule', label: 'Schedule', icon: 'calendar-clock' },
     { value: 'quiz', label: 'Quiz', icon: 'award' },
     { value: 'experience', label: 'Experience', icon: 'sparkles' },
@@ -69,6 +72,65 @@ const NAV = [
 const CATEGORIES = ['', 'HR', 'Support', 'Events', 'Feedback', 'Other']
 function onCover(file) {
   set({ cover_image: file.file_url })
+}
+
+// --- Encryption ------------------------------------------------------------
+// Enabling encryption generates the keypair in THIS browser, wraps the private key under a
+// passphrase, and stores only the wrapped key + public key server-side. The passphrase never
+// leaves the page. Frozen once published — the public key must stay stable for sealed responses.
+const encFrozen = computed(() => props.form?.status === 'Published')
+const passOpen = ref(false)
+const pass1 = ref('')
+const pass2 = ref('')
+const passErr = ref('')
+const encBusy = ref(false)
+
+function openPassphrase() {
+  pass1.value = ''
+  pass2.value = ''
+  passErr.value = ''
+  passOpen.value = true
+}
+
+async function enableEncryption() {
+  passErr.value = ''
+  if (pass1.value.length < 8) { passErr.value = 'Use at least 8 characters.'; return }
+  if (pass1.value !== pass2.value) { passErr.value = 'The passphrases don’t match.'; return }
+  encBusy.value = true
+  try {
+    const { publicKey, privateKey } = await generateKeypair()
+    const wrapped = await wrapPrivateKey(privateKey, pass1.value)
+    const fp = await fingerprint(publicKey)
+    const res = await call('forms.admin.setup_encryption', {
+      name: props.form.name,
+      public_key: publicKey,
+      wrapped_key: wrapped.wrapped,
+      kdf_salt: wrapped.salt,
+      key_iv: wrapped.iv,
+      fingerprint: fp,
+    })
+    // Reflect the server state locally (these fields are server-set, never saved from the client).
+    set({ encrypted: 1, enc_has_key: true, enc_fingerprint: res.fingerprint, collect_email: 1 })
+    passOpen.value = false
+    toast.success('Encryption enabled')
+  } catch (e) {
+    passErr.value = e.messages?.[0] || 'Could not enable encryption.'
+  } finally {
+    encBusy.value = false
+  }
+}
+
+async function disableEncryption() {
+  encBusy.value = true
+  try {
+    await call('forms.admin.disable_encryption', { name: props.form.name })
+    set({ encrypted: 0, enc_has_key: false, enc_fingerprint: null })
+    toast.success('Encryption turned off')
+  } catch (e) {
+    toast.error(e.messages?.[0] || 'Could not turn off encryption.')
+  } finally {
+    encBusy.value = false
+  }
 }
 </script>
 
@@ -107,6 +169,50 @@ function onCover(file) {
             <SettingsRow title="Login required">
               <Switch :modelValue="!!form.login_required" @update:modelValue="set({ login_required: $event ? 1 : 0 })" />
             </SettingsRow>
+          </div>
+        </SettingsBody>
+      </SettingsPanel>
+
+      <!-- Encryption -->
+      <SettingsPanel value="encryption">
+        <SettingsHeader title="Encryption"
+          description="Seal who responds so only you can read it — not other managers, not admins, not the database." />
+        <SettingsBody>
+          <div class="pt-9 flex flex-col gap-5">
+            <SettingsRow title="Encrypt respondent identity"
+              description="End-to-end encrypt the collected email to a key only you hold.">
+              <Switch :modelValue="!!form.encrypted" :disabled="encFrozen || encBusy"
+                @update:modelValue="$event ? openPassphrase() : disableEncryption()" />
+            </SettingsRow>
+
+            <!-- armed state: fingerprint + guidance -->
+            <div v-if="form.encrypted" class="rounded-lg border border-outline-gray-1 bg-surface-gray-1 p-3.5 flex flex-col gap-2.5">
+              <div class="flex items-center gap-2">
+                <Icon name="shield-check" :size="15" class="text-ink-green-600" />
+                <span class="text-sm font-medium text-ink-gray-8">Identity is encrypted</span>
+                <Badge v-if="encFrozen" theme="gray" label="Frozen" />
+              </div>
+              <div class="flex items-center gap-2 text-[13px] text-ink-gray-6">
+                <span>Key fingerprint</span>
+                <span class="font-mono text-ink-gray-8">{{ form.enc_fingerprint || '—' }}</span>
+              </div>
+              <p class="text-[13px] leading-5 text-ink-gray-5">
+                You’ll unlock responses with your passphrase. There’s no recovery — if you lose it,
+                who responded can’t be recovered.
+              </p>
+            </div>
+
+            <div v-else class="rounded-lg border border-outline-gray-1 bg-surface-gray-1 p-3.5">
+              <p class="text-[13px] leading-5 text-ink-gray-5">
+                When on, each respondent’s email is sealed in their browser to your public key. The
+                server stores only ciphertext, and only you — with your passphrase — can decrypt it
+                on the responses screen. Answers themselves stay readable; only the “who” is sealed.
+              </p>
+            </div>
+
+            <p v-if="encFrozen && !form.encrypted" class="text-[13px] text-ink-gray-5">
+              Encryption can only be turned on before a form is published.
+            </p>
           </div>
         </SettingsBody>
       </SettingsPanel>
@@ -300,4 +406,28 @@ function onCover(file) {
       </SettingsPanel>
     </SettingsContent>
   </SettingsDialog>
+
+  <!-- Passphrase capture for arming encryption. The passphrase never leaves this browser. -->
+  <Dialog v-model="passOpen" :options="{ title: 'Set an encryption passphrase' }">
+    <template #body-content>
+      <div class="flex flex-col gap-4">
+        <p class="text-[13px] leading-5 text-ink-gray-6">
+          This passphrase encrypts your private key. You’ll enter it to read who responded. It’s
+          never sent to the server, and it can’t be reset — keep it safe.
+        </p>
+        <FormControl type="password" label="Passphrase" autocomplete="new-password"
+          :modelValue="pass1" @update:modelValue="pass1 = $event; passErr = ''" />
+        <FormControl type="password" label="Confirm passphrase" autocomplete="new-password"
+          :modelValue="pass2" @update:modelValue="pass2 = $event; passErr = ''" />
+        <span v-if="passErr" class="text-xs text-ink-red-500 flex items-center gap-1">
+          <Icon name="circle-alert" :size="12" />{{ passErr }}
+        </span>
+      </div>
+    </template>
+    <template #actions>
+      <Button variant="solid" theme="gray" class="w-full" :loading="encBusy" @click="enableEncryption">
+        Enable encryption
+      </Button>
+    </template>
+  </Dialog>
 </template>

@@ -263,6 +263,81 @@ def duplicate_form(name: str) -> dict:
 
 
 @frappe.whitelist()
+def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str,
+		key_iv: str, fingerprint: str) -> dict:
+	"""Arm identity encryption for a form with a keypair generated in the creator's browser.
+
+	Only the form's creator may do this: the whole promise is that even other Forms Managers and
+	System Managers can't unmask respondents, so the private key (wrapped under the creator's
+	passphrase) is bound to the owner. We refuse to re-key a form that already has responses — the
+	old identities are sealed to the old public key and would be orphaned by a new one.
+	"""
+	_guard()
+	_require(name, "write")
+	form = frappe.get_doc("FF Form", name)
+	if form.owner != frappe.session.user:
+		frappe.throw("Only the form's creator can enable encryption.", frappe.PermissionError)
+	if not all([public_key, wrapped_key, kdf_salt, key_iv, fingerprint]):
+		frappe.throw("Incomplete key material.")
+	if form.enc_public_key and public_key != form.enc_public_key and _response_count(form) > 0:
+		frappe.throw("This form already has responses sealed to its current key — re-keying would "
+			"make them permanently unreadable.")
+	form.encrypted = 1
+	form.enc_public_key = public_key
+	form.enc_wrapped_key = wrapped_key
+	form.enc_kdf_salt = kdf_salt
+	form.enc_key_iv = key_iv
+	form.enc_fingerprint = fingerprint
+	form.save()
+	frappe.db.commit()
+	return {"encrypted": 1, "fingerprint": fingerprint}
+
+
+@frappe.whitelist()
+def disable_encryption(name: str) -> dict:
+	"""Turn encryption off (creator only). Blocked once the form is published or has responses:
+	past identities are ciphertext and un-arming can't decrypt them."""
+	_guard()
+	_require(name, "write")
+	form = frappe.get_doc("FF Form", name)
+	if form.owner != frappe.session.user:
+		frappe.throw("Only the form's creator can change encryption.", frappe.PermissionError)
+	if form.status == "Published":
+		frappe.throw("Encryption is frozen once a form is published.")
+	form.encrypted = 0
+	form.enc_public_key = form.enc_wrapped_key = form.enc_kdf_salt = None
+	form.enc_key_iv = form.enc_fingerprint = None
+	form.save()
+	frappe.db.commit()
+	return {"encrypted": 0}
+
+
+@frappe.whitelist()
+def get_encryption_key(slug: str) -> dict:
+	"""Hand the creator their wrapped private key so their browser can unlock responses.
+
+	Owner-only: other managers (even System Managers) are refused here. The wrapped key is useless
+	without the passphrase, but binding this endpoint to the creator keeps the surface tight."""
+	_guard()
+	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
+	if not name:
+		frappe.throw("Form not found.", frappe.DoesNotExistError)
+	_require(name, "read")
+	form = frappe.get_doc("FF Form", name)
+	if form.owner != frappe.session.user:
+		frappe.throw("Only the form's creator can unlock responses.", frappe.PermissionError)
+	if not form.enc_wrapped_key:
+		frappe.throw("This form isn't encrypted.")
+	return {
+		"public_key": form.enc_public_key,
+		"wrapped_key": form.enc_wrapped_key,
+		"kdf_salt": form.enc_kdf_salt,
+		"key_iv": form.enc_key_iv,
+		"fingerprint": form.enc_fingerprint,
+	}
+
+
+@frappe.whitelist()
 def publish_form(name: str) -> dict:
 	_guard()
 	_require(name, "write")

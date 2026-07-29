@@ -63,6 +63,11 @@ def _form_dict(form) -> dict:
 		"embed_allowed_domains": form.embed_allowed_domains,
 		"archived": cint(form.archived),
 		"is_template": cint(form.is_template),
+		# Encryption status for the builder. The wrapped private key is NEVER sent here — it's fetched
+		# on demand (owner-only) by the responses view when the creator unlocks.
+		"encrypted": cint(form.encrypted),
+		"enc_fingerprint": form.enc_fingerprint,
+		"enc_has_key": bool(form.enc_public_key),
 		"fields": [
 			{
 				"name": f.name,

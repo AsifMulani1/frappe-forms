@@ -31,6 +31,16 @@ _RECONCILE_ATTRS = ("label", "options", "reqd", "description")
 _VARCHAR_TYPES = {"Select", "Data"}
 
 
+def _identity_field(form) -> dict:
+	"""The respondent-identity system column. Encrypted forms store a sealed ciphertext blob
+	(Long Text) instead of the plaintext email — so the raw DB never reveals who submitted."""
+	if cint(form.encrypted):
+		return {"fieldname": "enc_identity", "label": "Encrypted Identity", "fieldtype": "Long Text",
+			"read_only": 1, "no_copy": 1}
+	return {"fieldname": "respondent_email", "label": "Respondent Email", "fieldtype": "Data",
+		"options": "Email"}
+
+
 def publish_collection(form):
 	"""Create the generated DocType, or run an additive-only sync if it already exists."""
 	# Frappe caps DocType names at 61 chars; a long title must not produce an invalid name.
@@ -71,13 +81,9 @@ def publish_collection(form):
 			"hidden": 1,
 			"no_copy": 1,
 		})
-		# Respondent's email (captured when the form has "Collect email" on).
-		dt.append("fields", {
-			"fieldname": "respondent_email",
-			"label": "Respondent Email",
-			"fieldtype": "Data",
-			"options": "Email",
-		})
+		# Respondent identity. On an encrypted form it's a ciphertext blob sealed to the creator's
+		# key (so the DB never holds the plaintext email); otherwise the plain captured email.
+		dt.append("fields", _identity_field(form))
 		# Quiz score columns (populated on submit only when the form is a quiz).
 		for fn, lbl in (("score", "Score"), ("max_score", "Max Score")):
 			dt.append("fields", {"fieldname": fn, "label": lbl, "fieldtype": "Float", "read_only": 1})
@@ -112,14 +118,15 @@ def publish_collection(form):
 	if "edit_token" not in existing:
 		dt.append("fields", {"fieldname": "edit_token", "label": "Edit Token", "fieldtype": "Data",
 			"hidden": 1, "no_copy": 1})
-	if "respondent_email" not in existing:
-		dt.append("fields", {"fieldname": "respondent_email", "label": "Respondent Email",
-			"fieldtype": "Data", "options": "Email"})
+	identity = _identity_field(form)
+	if identity["fieldname"] not in existing:
+		dt.append("fields", identity)
 	for fn, lbl in (("score", "Score"), ("max_score", "Max Score")):
 		if fn not in existing:
 			dt.append("fields", {"fieldname": fn, "label": lbl, "fieldtype": "Float", "read_only": 1})
 
-	system_fields = {"workflow_state", "edit_token", "respondent_email", "score", "max_score"}
+	system_fields = {"workflow_state", "edit_token", "respondent_email", "enc_identity",
+		"score", "max_score"}
 	for df in dt.fields:
 		if df.fieldname in system_fields:
 			continue

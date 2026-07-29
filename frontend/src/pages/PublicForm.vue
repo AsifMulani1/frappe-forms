@@ -5,6 +5,7 @@ import { Button, FormControl, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import { conditionMet } from '../fieldTypes'
 import { validateField } from '../data/validate'
+import { sealIdentity } from '../data/crypto'
 import Icon from '../components/Icon.vue'
 import RespondentField from '../components/RespondentField.vue'
 import ProgressBar from '../components/public/ProgressBar.vue'
@@ -364,13 +365,25 @@ async function submit() {
   }
   submitting.value = true
   try {
+    // Encrypted form: seal the collected email in-browser to the creator's public key and send only
+    // the ciphertext — the plaintext email never touches the network or the server.
+    let encIdentity
+    let plainEmail = form.value.collect_email ? (respondentEmail.value || '').trim() : undefined
+    if (form.value.encrypted && form.value.enc_public_key) {
+      encIdentity = await sealIdentity(form.value.enc_public_key, {
+        email: plainEmail || null,
+        user: form.value.user_email || null,
+      })
+      plainEmail = undefined // never send the plaintext address for an encrypted form
+    }
     const res = await call('forms.api.submit', {
       slug: props.slug,
       data: JSON.stringify(answers),
       hp: hp.value,
       token: editToken.value || undefined,
       record: recordName.value || undefined,
-      email: form.value.collect_email ? (respondentEmail.value || '').trim() : undefined,
+      email: plainEmail,
+      enc_identity: encIdentity,
     })
     submitResult.value = res
     if (res.token) editToken.value = res.token

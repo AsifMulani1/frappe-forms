@@ -13,6 +13,16 @@ class FFForm(Document):
 		self.validate_redirect_url()
 		self.ensure_field_keys()
 		self.validate_field_patterns()
+		self.guard_encryption()
+
+	def guard_encryption(self):
+		"""Encryption can only be armed while keys are present, and only the creator can hold them.
+
+		The keys themselves are written by the owner-only setup_encryption endpoint, never through the
+		generic builder save — so here we just refuse an inconsistent state: 'encrypted' on with no
+		public key would silently store plaintext identities."""
+		if cint(self.encrypted) and not self.enc_public_key:
+			frappe.throw("Encryption can't be enabled without a key. Set it up from the form's settings.")
 
 	def validate_field_patterns(self):
 		"""Reject an invalid validation_pattern at save time (a builder typo), so it surfaces in the
