@@ -28,6 +28,7 @@ def encrypted_form(slug, doctype_name):
 	doc.storage_mode = "Collection"
 	doc.doctype_name = doctype_name
 	doc.collect_email = 1
+	doc.allow_edit = 1
 	# Key material is generated in the creator's browser; sentinels stand in for the test.
 	doc.encrypted = 1
 	doc.enc_public_key = "pub-key-b64"
@@ -90,3 +91,40 @@ class TestEncryption(IntegrationTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			crud.setup_encryption(self.form.name, public_key="NEW-pub", wrapped_key="w",
 				kdf_salt="s", key_iv="i", fingerprint="ff")
+
+	def test_arming_encryption_on_published_form_refused(self):
+		# Arming after publish can't add the enc_identity column, so sealed identities would be
+		# dropped on submit. Encryption must be set up before publishing.
+		with self.assertRaises(frappe.ValidationError):
+			crud.setup_encryption(self.form.name, public_key="pub", wrapped_key="w",
+				kdf_salt="s", key_iv="i", fingerprint="ff")
+
+	def test_edit_reneutralises_modified_by(self):
+		# A signed-in respondent edits their response; owner AND modified_by must stay Guest so the
+		# save() doesn't re-stamp them onto the row.
+		res = api.submit("enc-test", json.dumps({"full_name": "Before"}), enc_identity=SEALED)
+		token = res["token"]
+		api.submit("enc-test", json.dumps({"full_name": "After"}), token=token, enc_identity=SEALED)
+		row = frappe.db.get_value("Enc Test Collection", res["name"],
+			["owner", "modified_by", "full_name"], as_dict=True)
+		self.assertEqual(row.owner, "Guest")
+		self.assertEqual(row.modified_by, "Guest")
+		self.assertEqual(row.full_name, "After")
+
+	def test_missing_sealed_identity_refused(self):
+		# An encrypted submission with no blob would persist an undecryptable identity — reject it.
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				api.submit("enc-test", json.dumps({"full_name": "No Blob"}))
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_malformed_sealed_identity_refused(self):
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				api.submit("enc-test", json.dumps({"full_name": "Bad"}),
+					enc_identity=json.dumps({"v": 1, "epk": "not base64!!", "iv": "BB", "ct": "CC"}))
+		finally:
+			frappe.set_user("Administrator")

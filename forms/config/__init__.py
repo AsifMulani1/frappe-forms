@@ -27,3 +27,8 @@ ORPHAN_UPLOAD_GRACE_HOURS = 2
 # --- Signatures ---------------------------------------------------------------------------------
 # Base64 PNG data URL cap, to keep records sane.
 SIGNATURE_MAX_BYTES = 500_000
+
+# --- Identity encryption ------------------------------------------------------------------------
+# A sealed identity envelope is tiny (an ephemeral P-256 key + IV + a short ciphertext). Cap it so a
+# malformed/oversized blob can't bloat the row or be used to abuse the Long Text column.
+ENC_IDENTITY_MAX_BYTES = 8 * 1024
