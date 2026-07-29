@@ -321,6 +321,11 @@ def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str
 	form = frappe.get_doc("FF Form", name)
 	if form.owner != frappe.session.user:
 		frappe.throw("Only the form's creator can enable encryption.", frappe.PermissionError)
+	if form.status == "Published":
+		# Arming after publish would flip form.encrypted without adding the enc_identity column
+		# (the schema is fixed at publish), so every sealed identity would be silently dropped on
+		# submit. Encryption must be enabled before publishing, and is frozen once it is.
+		frappe.throw("Encryption must be enabled before the form is published.")
 	if not all([public_key, wrapped_key, kdf_salt, key_iv, fingerprint]):
 		frappe.throw("Incomplete key material.")
 	if form.enc_public_key and public_key != form.enc_public_key and _response_count(form) > 0:

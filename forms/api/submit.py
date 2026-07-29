@@ -5,6 +5,8 @@
 # and inserts/updates the response (Collection or Linked) with ignore_permissions=True — we
 # never grant Guest broad create perms. The _insert_*/_update_* helpers do the actual writes.
 
+import base64
+import binascii
 import json
 
 import frappe
@@ -17,7 +19,35 @@ from forms.api.render import _accepting_status, _field_spec, _published_form, _s
 from forms.api.uploads import _attach_file
 from forms.api.validation import _coerce_and_validate, _visible_specs
 from forms.compile import LAYOUT_TYPES, resolve_fieldname
-from forms.config import SUBMIT_RATE_LIMIT, SUBMIT_RATE_WINDOW
+from forms.config import ENC_IDENTITY_MAX_BYTES, SUBMIT_RATE_LIMIT, SUBMIT_RATE_WINDOW
+
+
+def _validate_enc_identity(blob: str | None):
+	"""Confirm a sealed identity envelope is present and well-formed before it's stored.
+
+	The server can't read the ciphertext (only the creator's browser holds the private key), but it
+	MUST reject a missing or malformed envelope: otherwise an encrypted response persists with no
+	recoverable identity — undecryptable forever, and indistinguishable from a genuine one. We check
+	the envelope shape sealIdentity() produces: {v:1, epk, iv, ct} with base64 parts.
+	"""
+	if not blob:
+		frappe.throw("This form encrypts your identity, but none was received. Please retry.")
+	if len(blob) > ENC_IDENTITY_MAX_BYTES:
+		frappe.throw("Encrypted identity is too large.")
+	try:
+		env = json.loads(blob)
+	except (ValueError, TypeError):
+		frappe.throw("Encrypted identity is malformed.")
+	if not isinstance(env, dict) or env.get("v") != 1:
+		frappe.throw("Encrypted identity is malformed.")
+	for part in ("epk", "iv", "ct"):
+		val = env.get(part)
+		if not isinstance(val, str) or not val:
+			frappe.throw("Encrypted identity is malformed.")
+		try:
+			base64.b64decode(val, validate=True)
+		except (binascii.Error, ValueError):
+			frappe.throw("Encrypted identity is malformed.")
 
 
 def _block_if_duplicate(form, respondent_email: str | None):
@@ -77,6 +107,12 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 			frappe.throw("Please provide your email address.")
 		if not validate_email_address(respondent_email):
 			frappe.throw("Please provide a valid email address.")
+
+	# On an encrypted form the identity lives only in the sealed blob. Require it (and check its
+	# shape) on a new response; on an edit, validate only a blob that's actually being re-sent, so a
+	# metadata-only edit doesn't wipe the identity already on the row.
+	if encrypted and (enc_identity or not is_edit):
+		_validate_enc_identity(enc_identity)
 
 	if not is_edit:
 		accepting, closed_reason = _accepting_status(form)
@@ -211,6 +247,12 @@ def _update_collection(form, clean: dict, specs: dict, token: str,
 			doc.enc_identity = enc_identity
 		doc.flags.ignore_version = True  # the version log's owner would unmask the respondent
 	doc.save(ignore_permissions=True)
+
+	if cint(form.encrypted):
+		# save() stamps modified_by with the session user — for a signed-in respondent that re-exposes
+		# them on every edit. Re-neutralise owner/modified_by so identity lives only in the ciphertext.
+		frappe.db.set_value(form.doctype_name, doc.name,
+			{"owner": "Guest", "modified_by": "Guest"}, update_modified=False)
 
 	for fieldname, spec in specs.items():
 		if spec["field_type"] == "file_upload" and clean.get(fieldname):
