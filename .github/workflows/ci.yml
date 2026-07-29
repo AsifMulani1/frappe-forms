@@ -89,11 +89,17 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install & build
+      - name: Install
         working-directory: frontend
-        run: |
-          yarn install --frozen-lockfile || yarn install
-          yarn build
+        run: yarn install --frozen-lockfile || yarn install
+
+      - name: Test (unit + committed-bundle guard)
+        working-directory: frontend
+        run: yarn test
+
+      - name: Build
+        working-directory: frontend
+        run: yarn build
 
       - name: Verify committed SPA bundle is in sync
         run: |
