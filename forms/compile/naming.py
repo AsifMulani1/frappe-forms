@@ -49,11 +49,31 @@ RESERVED_FIELDNAMES = frozenset(_DEFAULT_FIELDS) | {
 }
 
 
+# MariaDB caps column identifiers at 64 chars, so Frappe's schema builder rejects any longer
+# fieldname (frappe/database/schema.py). A fieldname is invisible plumbing — the respondent only
+# ever sees the field's label, which is unlimited — so we cap the derived name here rather than
+# forcing the user to shorten a long question.
+MAX_FIELDNAME_LEN = 64
+
+
+def _cap_fieldname(base: str, limit: int = MAX_FIELDNAME_LEN) -> str:
+	"""Cap a snake_case fieldname at `limit`, preferring to cut on a word (underscore) boundary so
+	the result stays readable (…_improve_develop, not …_improve_dev). Falls back to a hard cut when
+	the first word alone already overflows."""
+	if len(base) <= limit:
+		return base
+	cut = base[:limit].rstrip("_")
+	last = cut.rfind("_")
+	if last >= limit // 2:  # keep whole words only when they don't cost us most of the name
+		cut = cut[:last]
+	return cut.rstrip("_") or base[:limit]
+
+
 def scrub_fieldname(label: str, fallback: str = "field") -> str:
-	"""snake_case ascii fieldname derived from a label."""
+	"""snake_case ascii fieldname derived from a label, capped to a DB-legal length."""
 	base = re.sub(r"[^a-z0-9]+", "_", (label or "").lower())
 	base = re.sub(r"^_+|_+$", "", base)
-	return base or fallback
+	return _cap_fieldname(base or fallback)
 
 
 def title_case(text: str) -> str:
@@ -67,11 +87,14 @@ def resolve_fieldname(field) -> str:
 
 
 def _dedupe(base: str, seen: set) -> str:
-	"""Return `base` (or base_2, base_3, …) avoiding `seen` and any reserved system column."""
-	candidate, n = base, 1
+	"""Return `base` (or base_2, base_3, …) avoiding `seen` and any reserved system column, keeping
+	the result within MAX_FIELDNAME_LEN — the suffix eats into the base rather than overflowing it,
+	so two long questions sharing a prefix still get distinct, DB-legal columns."""
+	candidate, n = _cap_fieldname(base), 1
 	while candidate in seen or candidate in RESERVED_FIELDNAMES:
 		n += 1
-		candidate = f"{base}_{n}"
+		suffix = f"_{n}"
+		candidate = _cap_fieldname(base, MAX_FIELDNAME_LEN - len(suffix)) + suffix
 	seen.add(candidate)
 	return candidate
 
