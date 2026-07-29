@@ -163,7 +163,7 @@ def run():
 	)
 	summary["forms"] += 1
 	summary["doctypes"].append(devcon.doctype_name)
-	for i in range(248):
+	for _ in range(248):
 		vals, ms = by_label(
 			devcon,
 			{
@@ -225,7 +225,7 @@ def run():
 	)
 	summary["forms"] += 1
 	summary["doctypes"].append(csat.doctype_name)
-	for i in range(76):
+	for _ in range(76):
 		vals, _ = by_label(csat, {
 			"How satisfied were you?": random.choice([0.4, 0.6, 0.8, 0.8, 1.0, 1.0]),
 			"How did we do?": random.choice(CSAT_REASONS),
@@ -235,7 +235,7 @@ def run():
 	summary["submissions"] += 76
 
 	# 4) New lead - contact us (Linked -> Contact)
-	contact = _make_form(
+	_make_form(
 		"contact-us", "New lead - contact us",
 		[
 			{"label": "Full name", "field_type": "short_answer", "reqd": 1, "mapped_field": "first_name"},
@@ -248,9 +248,9 @@ def run():
 		description="Tell us about your project and we'll get back to you.",
 	)
 	summary["forms"] += 1
-	for i in range(30):
+	for _ in range(30):
 		first = fake.first_name()
-		nm = _insert_record("Contact", {
+		_insert_record("Contact", {
 			"first_name": f"{first} {fake.last_name()}",
 			"email_id": fake.email(),
 			"mobile_no": fake.numerify("+1-###-###-####"),

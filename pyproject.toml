@@ -60,8 +60,15 @@ ignore = [
     "UP032", # Use f-string instead of `format` call (translations)
     "UP037", # quoted annotations
     "UP040", # Use type aliases instead of type annotations
+    "RUF001", # ambiguous unicode char - intentional typographic apostrophes/quotes in user-facing copy
+    "RUF002", # ambiguous unicode char in docstrings - same
+    "RUF003", # ambiguous unicode char in comments - same
 ]
 typing-modules = ["frappe.types.DF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test setup uses compact one-line `doc.a = 1; doc.b = 2` statements for terse fixtures.
+"forms/tests/**" = ["E702"]
 
 [tool.ruff.format]
 quote-style = "double"

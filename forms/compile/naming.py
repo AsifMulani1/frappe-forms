@@ -40,7 +40,7 @@ TEXT_TYPES = ("short_answer", "paragraph", "address")  # free text; accept an op
 # Fieldnames a generated column may NEVER take: Frappe's own system columns (overwriting `owner`
 # or `name` corrupts ownership/identity), the child-table link columns, and this app's reserved
 # submission columns. A field whose label slugifies to one of these is suffixed (e.g. name_2).
-from frappe.model import default_fields as _DEFAULT_FIELDS  # noqa: E402
+from frappe.model import default_fields as _DEFAULT_FIELDS
 
 RESERVED_FIELDNAMES = frozenset(_DEFAULT_FIELDS) | {
 	"parent", "parentfield", "parenttype", "idx",

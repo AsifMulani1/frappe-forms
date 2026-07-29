@@ -43,7 +43,7 @@ def validate_conditional_logic(form):
 		node = start
 		while node in edge:
 			if node in seen:
-				loop = seen[seen.index(node):] + [node]
+				loop = [*seen[seen.index(node):], node]
 				names = " -> ".join(label_of.get(k, k) for k in loop)
 				frappe.throw(f"Conditional-logic rules form a loop: {names}. Break the cycle to publish.")
 			seen.append(node)
