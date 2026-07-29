@@ -159,6 +159,33 @@ class TestCompile(IntegrationTestCase):
 		df_names = [df["fieldname"] for df in cc.build_docfields(form)]
 		self.assertFalse(set(df_names) & cc.RESERVED_FIELDNAMES)
 
+	def test_long_label_caps_fieldname_at_64(self):
+		# A verbose question label must not produce a fieldname MariaDB will reject (>64 chars);
+		# the respondent-facing label stays untouched, only the derived column name is capped.
+		long_label = "What is the one skill you would want to improve develop this year"
+		form = make_form("longname-test", [{"label": long_label, "field_type": "short_answer"}])
+		cc.freeze_fieldnames(form)
+		form.reload()
+		fn = form.fields[0].fieldname
+		self.assertLessEqual(len(fn), 64)
+		self.assertFalse(fn.endswith("_"))
+		self.assertEqual(form.fields[0].label, long_label)  # label is unchanged
+
+	def test_long_labels_sharing_prefix_stay_distinct_and_legal(self):
+		# Two long questions sharing their first 64 chars must get distinct columns, each still
+		# within the DB limit even after the dedup suffix.
+		prefix = "please describe in as much detail as you possibly can your experience with"
+		form = make_form("longname-dedupe-test", [
+			{"label": f"{prefix} onboarding", "field_type": "short_answer"},
+			{"label": f"{prefix} offboarding", "field_type": "short_answer"},
+		])
+		cc.freeze_fieldnames(form)
+		form.reload()
+		names = [f.fieldname for f in form.fields]
+		self.assertEqual(len(set(names)), 2, "long labels must not collapse to one column")
+		for fn in names:
+			self.assertLessEqual(len(fn), 64)
+
 	def test_republish_reconciles_changed_options_and_reqd(self):
 		form = make_form("reconcile-test", [
 			{"label": "Pick", "field_type": "single_choice", "options": "A\nB"},
