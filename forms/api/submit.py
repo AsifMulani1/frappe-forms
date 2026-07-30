@@ -40,14 +40,23 @@ def _validate_enc_identity(blob: str | None):
 		frappe.throw("Encrypted identity is malformed.")
 	if not isinstance(env, dict) or env.get("v") != 1:
 		frappe.throw("Encrypted identity is malformed.")
+	raw = {}
 	for part in ("epk", "iv", "ct"):
 		val = env.get(part)
 		if not isinstance(val, str) or not val:
 			frappe.throw("Encrypted identity is malformed.")
 		try:
-			base64.b64decode(val, validate=True)
+			raw[part] = base64.b64decode(val, validate=True)
 		except (binascii.Error, ValueError):
 			frappe.throw("Encrypted identity is malformed.")
+	# Decoded lengths must match what the browser's openIdentity() can actually consume, or we'd
+	# accept an envelope that is structurally impossible to decrypt: epk is an uncompressed P-256
+	# public key (65 bytes, 0x04 prefix), iv is a 12-byte AES-GCM nonce, ct carries at least the
+	# 16-byte GCM tag. Base64 validity alone lets wrong-length junk through.
+	if len(raw["epk"]) != 65 or raw["epk"][0] != 0x04:
+		frappe.throw("Encrypted identity is malformed.")
+	if len(raw["iv"]) != 12 or len(raw["ct"]) < 16:
+		frappe.throw("Encrypted identity is malformed.")
 
 
 def _block_if_duplicate(form, respondent_email: str | None):
@@ -240,15 +249,20 @@ def _update_collection(form, clean: dict, specs: dict, token: str,
 	doc = frappe.get_doc(form.doctype_name, name)
 	for fieldname, spec in specs.items():
 		_apply_value(doc, fieldname, spec, clean.get(fieldname))
+	encrypted = cint(form.encrypted)
 	if respondent_email and doc.meta.get_field("respondent_email"):
 		doc.respondent_email = respondent_email
-	if cint(form.encrypted):
-		if enc_identity and doc.meta.get_field("enc_identity"):
-			doc.enc_identity = enc_identity
-		doc.flags.ignore_version = True  # the version log's owner would unmask the respondent
-	doc.save(ignore_permissions=True)
+	if encrypted and enc_identity and doc.meta.get_field("enc_identity"):
+		doc.enc_identity = enc_identity
+	# ignore_version MUST travel through save(): _save() overwrites doc.flags.ignore_version with its
+	# own parameter (defaulting to frappe.in_test), so a flag set here is silently dropped in
+	# production — and the resulting Version record's owner/modified_by would unmask the respondent.
+	save_kwargs = {"ignore_permissions": True}
+	if encrypted:
+		save_kwargs["ignore_version"] = True
+	doc.save(**save_kwargs)
 
-	if cint(form.encrypted):
+	if encrypted:
 		# save() stamps modified_by with the session user — for a signed-in respondent that re-exposes
 		# them on every edit. Re-neutralise owner/modified_by so identity lives only in the ciphertext.
 		frappe.db.set_value(form.doctype_name, doc.name,

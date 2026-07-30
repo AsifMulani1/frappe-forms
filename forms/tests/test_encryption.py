@@ -6,6 +6,7 @@
 # and re-keying a form that already has responses must be refused. The seal/open crypto itself is
 # WebCrypto (browser-only); here the blob is opaque to the server, so a sentinel string stands in.
 
+import base64
 import json
 
 import frappe
@@ -15,7 +16,15 @@ from forms import api
 from forms.admin import crud
 from forms.compile import publish
 
-SEALED = json.dumps({"v": 1, "epk": "AAAA", "iv": "BBBB", "ct": "CCCC"})  # opaque to the server
+# Opaque to the server (all-zero payload — only the creator's browser could decrypt a real one), but
+# the component *lengths* mirror a genuine sealed envelope so it passes _validate_enc_identity:
+# epk = 65-byte uncompressed P-256 point (0x04 prefix), iv = 12-byte GCM nonce, ct >= 16-byte tag.
+SEALED = json.dumps({
+	"v": 1,
+	"epk": base64.b64encode(bytes([4]) + bytes(64)).decode(),
+	"iv": base64.b64encode(bytes(12)).decode(),
+	"ct": base64.b64encode(bytes(32)).decode(),
+})
 
 
 def encrypted_form(slug, doctype_name):
@@ -128,3 +137,35 @@ class TestEncryption(IntegrationTestCase):
 					enc_identity=json.dumps({"v": 1, "epk": "not base64!!", "iv": "BB", "ct": "CC"}))
 		finally:
 			frappe.set_user("Administrator")
+
+	def test_wrong_length_envelope_component_refused(self):
+		# Valid base64 but wrong decoded length: the browser could never importKey/decrypt this, so a
+		# stored response would be permanently unreadable. epk here is 3 bytes, not the required 65.
+		bad = json.dumps({"v": 1, "epk": "AAAA",
+			"iv": base64.b64encode(bytes(12)).decode(),
+			"ct": base64.b64encode(bytes(32)).decode()})
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				api.submit("enc-test", json.dumps({"full_name": "Short EPK"}), enc_identity=bad)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_encrypted_edit_writes_no_version_record(self):
+		# The leak only manifests in production: frappe.in_test is True during tests, so save()'s
+		# default already suppresses versions and masks the bug. Force the production path
+		# (in_test=False) and assert an encrypted edit leaves NO Version row — one would capture the
+		# signed-in respondent's modified_by. Uses a dedicated form so the shared fixture is untouched.
+		form = encrypted_form("enc-ver", "Enc Ver Collection")
+		res = api.submit("enc-ver", json.dumps({"full_name": "V1"}), enc_identity=SEALED)
+		name, token = res["name"], res["token"]
+		saved = frappe.in_test
+		frappe.in_test = False
+		try:
+			api.submit("enc-ver", json.dumps({"full_name": "V2"}), token=token, enc_identity=SEALED)
+		finally:
+			frappe.in_test = saved
+		self.assertEqual(frappe.db.get_value("Enc Ver Collection", name, "full_name"), "V2")
+		versions = frappe.get_all("Version",
+			filters={"ref_doctype": "Enc Ver Collection", "docname": name})
+		self.assertEqual(versions, [], "encrypted edit must not create a Version record")
