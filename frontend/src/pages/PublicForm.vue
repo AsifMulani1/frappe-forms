@@ -369,7 +369,10 @@ async function submit() {
     // the ciphertext — the plaintext email never touches the network or the server.
     let encIdentity
     let plainEmail = form.value.collect_email ? (respondentEmail.value || '').trim() : undefined
-    if (form.value.encrypted && form.value.enc_public_key) {
+    if (form.value.encrypted) {
+      // Fail closed: an encrypted form with no public key must not fall through and leak the
+      // plaintext email — abort the submit instead.
+      if (!form.value.enc_public_key) throw new Error('This form is misconfigured for encryption. Please contact the form owner.')
       encIdentity = await sealIdentity(form.value.enc_public_key, {
         email: plainEmail || null,
         user: form.value.user_email || null,

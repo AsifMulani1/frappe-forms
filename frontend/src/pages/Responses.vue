@@ -3,7 +3,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Avatar, Badge, Button, Dialog, FormControl, createResource, toast } from 'frappe-ui'
 import { call } from '../data/call'
-import { unwrapPrivateKey, openIdentity } from '../data/crypto'
+import { unwrapPrivateKey, openIdentity, fingerprint } from '../data/crypto'
 import Icon from '../components/Icon.vue'
 import { prefs } from '../data/prefs'
 
@@ -53,7 +53,7 @@ async function decryptRow(name, blob) {
     const id = await openIdentity(privKey.value, blob)
     identities[name] = id.email || id.user || '—'
   } catch (e) {
-    identities[name] = '⚠ Undecryptable'
+    identities[name] = 'Identity unavailable'
   }
 }
 async function decryptLoadedRows() {
@@ -68,6 +68,12 @@ async function doUnlock() {
   unlocking.value = true
   try {
     const k = await call('forms.admin.get_encryption_key', { slug: props.slug })
+    // Verify the public key hasn't been swapped: recompute its fingerprint and compare before we
+    // trust it with the private key. A mismatch means the stored key was tampered with.
+    if ((await fingerprint(k.public_key)) !== k.fingerprint) {
+      unlockErr.value = 'Key fingerprint mismatch — this response set may have been tampered with.'
+      return
+    }
     privKey.value = await unwrapPrivateKey(k.wrapped_key, k.kdf_salt, k.key_iv, passphrase.value)
     unlockOpen.value = false
     passphrase.value = ''
@@ -79,6 +85,14 @@ async function doUnlock() {
   } finally {
     unlocking.value = false
   }
+}
+
+// Drop the decrypted identities from memory without a full reload: forget the private key and every
+// email we opened with it. The next unlock re-derives everything from the passphrase.
+function relock() {
+  privKey.value = null
+  for (const k of Object.keys(identities)) delete identities[k]
+  drawerEmail.value = null
 }
 
 // The "who" for a row: decrypted email (encrypted forms) or the first display answer.
@@ -104,7 +118,7 @@ async function openRecord(name) {
       const id = await openIdentity(privKey.value, drawer.value.enc_identity)
       drawerEmail.value = id.email || id.user || '—'
     } catch (e) {
-      drawerEmail.value = '⚠ Undecryptable'
+      drawerEmail.value = 'Identity unavailable'
     }
   }
 }
@@ -168,9 +182,14 @@ async function exportCsv() {
             <Button v-if="encrypted && !unlocked" variant="solid" theme="gray" @click="unlockOpen = true">
               <template #prefix><Icon name="lock" :size="15" /></template>Unlock responses
             </Button>
-            <Badge v-else-if="encrypted" theme="green">
-              <template #prefix><Icon name="lock-open" :size="12" /></template>Unlocked
-            </Badge>
+            <template v-else-if="encrypted">
+              <Badge theme="green">
+                <template #prefix><Icon name="lock-open" :size="12" /></template>Unlocked
+              </Badge>
+              <Button variant="outline" theme="gray" @click="relock">
+                <template #prefix><Icon name="lock" :size="15" /></template>Lock
+              </Button>
+            </template>
             <Button variant="outline" theme="gray" :loading="sheetLoading" @click="openSheet">
               <template #prefix><Icon name="table-2" :size="15" /></template>Open in Frappe Sheets
             </Button>

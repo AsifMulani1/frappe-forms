@@ -181,7 +181,7 @@ async function disableEncryption() {
           <div class="pt-9 flex flex-col gap-5">
             <SettingsRow title="Encrypt respondent identity"
               description="End-to-end encrypt the collected email to a key only you hold.">
-              <Switch :modelValue="!!form.encrypted" :disabled="encFrozen || encBusy"
+              <Switch :modelValue="!!form.encrypted" :disabled="encFrozen || encBusy || linked"
                 @update:modelValue="$event ? openPassphrase() : disableEncryption()" />
             </SettingsRow>
 
@@ -210,6 +210,9 @@ async function disableEncryption() {
               </p>
             </div>
 
+            <p v-if="linked && !form.encrypted" class="text-[13px] text-ink-gray-5">
+              Encryption is available for Collection forms only.
+            </p>
             <p v-if="encFrozen && !form.encrypted" class="text-[13px] text-ink-gray-5">
               Encryption can only be turned on before a form is published.
             </p>

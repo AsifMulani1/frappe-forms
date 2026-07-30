@@ -4,6 +4,8 @@
 # Form CRUD backing the dashboard and builder: list/create/save/archive/delete/duplicate,
 # publish + live preview, and the Linked-mode target field lookup.
 
+import base64
+import hashlib
 import re
 
 import frappe
@@ -262,6 +264,16 @@ def duplicate_form(name: str) -> dict:
 	return _form_dict(doc)
 
 
+def _fingerprint(public_key_b64: str) -> str:
+	"""Server-side twin of crypto.js fingerprint(): SHA-256 of the raw public key, first 8 bytes as
+	colon-separated hex. Used to verify the client-supplied fingerprint really matches the key."""
+	try:
+		raw = base64.b64decode(public_key_b64, validate=True)
+	except (ValueError, TypeError):
+		frappe.throw("Invalid public key.")
+	return ":".join(f"{b:02x}" for b in hashlib.sha256(raw).digest()[:8])
+
+
 @frappe.whitelist()
 def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str,
 		key_iv: str, fingerprint: str) -> dict:
@@ -269,8 +281,7 @@ def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str
 
 	Only the form's creator may do this: the whole promise is that even other Forms Managers and
 	System Managers can't unmask respondents, so the private key (wrapped under the creator's
-	passphrase) is bound to the owner. We refuse to re-key a form that already has responses — the
-	old identities are sealed to the old public key and would be orphaned by a new one.
+	passphrase) is bound to the owner.
 	"""
 	_guard()
 	_require(name, "write")
@@ -282,11 +293,17 @@ def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str
 		# (the schema is fixed at publish), so every sealed identity would be silently dropped on
 		# submit. Encryption must be enabled before publishing, and is frozen once it is.
 		frappe.throw("Encryption must be enabled before the form is published.")
+	if form.storage_mode != "Collection":
+		# Linked forms write straight into a target DocType (owner = the real respondent) and have no
+		# enc_identity column to hold the sealed blob — encryption there would store identity in clear.
+		frappe.throw("Encryption is only available for Collection forms.")
 	if not all([public_key, wrapped_key, kdf_salt, key_iv, fingerprint]):
 		frappe.throw("Incomplete key material.")
-	if form.enc_public_key and public_key != form.enc_public_key and _response_count(form) > 0:
-		frappe.throw("This form already has responses sealed to its current key — re-keying would "
-			"make them permanently unreadable.")
+	# The fingerprint the creator will eyeball is only meaningful if it actually derives from the
+	# stored public key. Recompute it (SHA-256(pubkey)[:8], matching crypto.js fingerprint()) and
+	# reject a mismatch, so a buggy/tampered client can't store an inconsistent pair.
+	if fingerprint != _fingerprint(public_key):
+		frappe.throw("Key fingerprint doesn't match the public key.")
 	form.encrypted = 1
 	form.enc_public_key = public_key
 	form.enc_wrapped_key = wrapped_key
@@ -300,8 +317,8 @@ def setup_encryption(name: str, public_key: str, wrapped_key: str, kdf_salt: str
 
 @frappe.whitelist()
 def disable_encryption(name: str) -> dict:
-	"""Turn encryption off (creator only). Blocked once the form is published or has responses:
-	past identities are ciphertext and un-arming can't decrypt them."""
+	"""Turn encryption off (creator only). Blocked once the form is published: responses only exist
+	for published forms, their identities are already ciphertext, and un-arming can't decrypt them."""
 	_guard()
 	_require(name, "write")
 	form = frappe.get_doc("FF Form", name)
@@ -321,8 +338,10 @@ def disable_encryption(name: str) -> dict:
 def get_encryption_key(slug: str) -> dict:
 	"""Hand the creator their wrapped private key so their browser can unlock responses.
 
-	Owner-only: other managers (even System Managers) are refused here. The wrapped key is useless
-	without the passphrase, but binding this endpoint to the creator keeps the surface tight."""
+	Owner-only: other managers (even System Managers) are refused at this endpoint. Note the wrapped
+	key is by-design safe at rest — it's sealed under the creator's passphrase (PBKDF2 210k), which
+	never leaves their browser, so the scheme holds even against a DB/backup reader who obtains it.
+	This endpoint binding is defense-in-depth, not the security boundary; the passphrase is."""
 	_guard()
 	name = frappe.db.get_value("FF Form", {"slug": slug}, "name")
 	if not name:

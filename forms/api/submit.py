@@ -6,7 +6,6 @@
 # never grant Guest broad create perms. The _insert_*/_update_* helpers do the actual writes.
 
 import base64
-import binascii
 import json
 
 import frappe
@@ -23,7 +22,7 @@ from forms.compile import LAYOUT_TYPES, resolve_fieldname
 from forms.config import ENC_IDENTITY_MAX_BYTES, SUBMIT_RATE_LIMIT, SUBMIT_RATE_WINDOW
 
 
-def _validate_enc_identity(blob: str | None):
+def _validate_enc_identity(blob: str | None) -> None:
 	"""Confirm a sealed identity envelope is present and well-formed before it's stored.
 
 	The server can't read the ciphertext (only the creator's browser holds the private key), but it
@@ -33,7 +32,9 @@ def _validate_enc_identity(blob: str | None):
 	"""
 	if not blob:
 		frappe.throw("This form encrypts your identity, but none was received. Please retry.")
-	if len(blob) > ENC_IDENTITY_MAX_BYTES:
+	# Byte length, not character count: the column is capped in bytes and a multibyte payload must
+	# not slip past the guard.
+	if len(blob.encode("utf-8")) > ENC_IDENTITY_MAX_BYTES:
 		frappe.throw("Encrypted identity is too large.")
 	try:
 		env = json.loads(blob)
@@ -47,8 +48,9 @@ def _validate_enc_identity(blob: str | None):
 		if not isinstance(val, str) or not val:
 			frappe.throw("Encrypted identity is malformed.")
 		try:
+			# binascii.Error subclasses ValueError, so this one except covers bad base64.
 			raw[part] = base64.b64decode(val, validate=True)
-		except (binascii.Error, ValueError):
+		except ValueError:
 			frappe.throw("Encrypted identity is malformed.")
 	# Decoded lengths must match what the browser's openIdentity() can actually consume, or we'd
 	# accept an envelope that is structurally impossible to decrypt: epk is an uncompressed P-256
@@ -58,11 +60,14 @@ def _validate_enc_identity(blob: str | None):
 		frappe.throw("Encrypted identity is malformed.")
 	if len(raw["iv"]) != 12 or len(raw["ct"]) < 16:
 		frappe.throw("Encrypted identity is malformed.")
-	# epk must be a genuine point on the P-256 curve — not merely 65 shaped bytes. An off-curve point
-	# is rejected by the browser's importKey(), so the identity could never be opened. This is the
-	# furthest a server without the private key can go toward "decryptable by the creator": we can
-	# confirm the ephemeral key is a usable ECDH public key, but NOT that the ciphertext was sealed to
-	# the creator's key — verifying that would require the private key we deliberately never hold.
+	# epk must be a genuine point on the P-256 curve — not merely 65 shaped bytes. This is NOT
+	# redundant with the length/prefix check above: from_encoded_point also accepts a 33-byte
+	# compressed point, which the browser's importKey('raw', …) cannot consume — the length/prefix
+	# check pins the uncompressed encoding, this pins on-curve validity. An off-curve point would be
+	# rejected by the browser, so the identity could never be opened. This is the furthest a server
+	# without the private key can go toward "decryptable by the creator": we confirm the ephemeral key
+	# is a usable ECDH public key, but NOT that the ciphertext was sealed to the creator's key —
+	# verifying that would require the private key we deliberately never hold.
 	try:
 		ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw["epk"])
 	except ValueError:
@@ -186,9 +191,27 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 			result["show_score"] = 1
 
 	frappe.db.commit()
-	_maybe_send_receipt(form, clean, specs, respondent_email)
+	# An encrypted form has no server-visible respondent address; a receipt would fall back to the
+	# signed-in user's real email and persist it (recipient + answers) in the Email Queue — plaintext
+	# identity in the DB, defeating the encryption. Skip it. The admin notification carries no
+	# respondent identity (respondent_email is None on encrypted forms), so it still runs.
+	if not encrypted:
+		_maybe_send_receipt(form, clean, specs, respondent_email)
 	_maybe_notify_admin(form, clean, specs, result["name"], respondent_email)
 	return result
+
+
+def _neutralise_identity(doc) -> None:
+	"""Strip the submitter's identity from a response's row metadata — the parent row AND every
+	child-table row. Frappe stamps owner/modified_by to the session user on every insert/save; for a
+	signed-in respondent on an encrypted form that would unmask them to any DB reader, so identity
+	must live only inside the sealed ciphertext blob. Child rows (checkboxes / grid answers) are
+	stamped the same way and are easy to overlook — a join from child to parent would deanonymise the
+	respondent otherwise."""
+	guest = {"owner": "Guest", "modified_by": "Guest"}
+	frappe.db.set_value(doc.doctype, doc.name, guest, update_modified=False)
+	for child in doc.get_all_children():
+		frappe.db.set_value(child.doctype, child.name, guest, update_modified=False)
 
 
 def _apply_value(doc, fieldname: str, spec: dict, value):
@@ -213,6 +236,7 @@ def _apply_value(doc, fieldname: str, spec: dict, value):
 
 def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
 		respondent_email: str | None = None, enc_identity: str | None = None) -> str:
+	encrypted = cint(form.encrypted)
 	doc = frappe.new_doc(form.doctype_name)
 	for fieldname, spec in specs.items():
 		value = clean.get(fieldname)
@@ -226,7 +250,7 @@ def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
 		doc.edit_token = token
 	if respondent_email and doc.meta.get_field("respondent_email"):
 		doc.respondent_email = respondent_email
-	if cint(form.encrypted):
+	if encrypted:
 		# Store the sealed identity blob and keep no identifying trace on the row itself: skip the
 		# version log (its owner would be the respondent) so it can't be undone below.
 		if enc_identity and doc.meta.get_field("enc_identity"):
@@ -235,17 +259,16 @@ def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
 
 	doc.insert(ignore_permissions=True)
 
-	if cint(form.encrypted):
-		# The row's owner/modified_by are set to the session user on insert — for a signed-in
-		# respondent that unmasks them to anyone reading the DB. Neutralise both so identity lives
-		# ONLY inside the ciphertext blob, decryptable by the creator alone.
-		frappe.db.set_value(form.doctype_name, doc.name,
-			{"owner": "Guest", "modified_by": "Guest"}, update_modified=False)
+	if encrypted:
+		# insert() stamps the session user onto the parent AND child rows — for a signed-in respondent
+		# that unmasks them to any DB reader. Scrub both so identity lives ONLY in the ciphertext blob.
+		_neutralise_identity(doc)
 
-	# Own the files uploaded for this submission (they were created unattached).
+	# Own the files uploaded for this submission (they were created unattached). On encrypted forms a
+	# signed-in uploader's identity would survive on File.owner, so neutralise that too.
 	for fieldname, spec in specs.items():
 		if spec["field_type"] == "file_upload" and clean.get(fieldname):
-			_attach_file(clean[fieldname], doc.doctype, doc.name)
+			_attach_file(clean[fieldname], doc.doctype, doc.name, neutralise_owner=encrypted)
 
 	return doc.name
 
@@ -273,14 +296,13 @@ def _update_collection(form, clean: dict, specs: dict, token: str,
 	doc.save(**save_kwargs)
 
 	if encrypted:
-		# save() stamps modified_by with the session user — for a signed-in respondent that re-exposes
-		# them on every edit. Re-neutralise owner/modified_by so identity lives only in the ciphertext.
-		frappe.db.set_value(form.doctype_name, doc.name,
-			{"owner": "Guest", "modified_by": "Guest"}, update_modified=False)
+		# save() re-stamps the session user onto the parent and freshly re-inserted child rows — for a
+		# signed-in respondent that re-exposes them on every edit. Re-scrub parent + children.
+		_neutralise_identity(doc)
 
 	for fieldname, spec in specs.items():
 		if spec["field_type"] == "file_upload" and clean.get(fieldname):
-			_attach_file(clean[fieldname], doc.doctype, doc.name)
+			_attach_file(clean[fieldname], doc.doctype, doc.name, neutralise_owner=encrypted)
 
 	return doc.name
 

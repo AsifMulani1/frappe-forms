@@ -15,14 +15,31 @@ class FFForm(Document):
 		self.validate_field_patterns()
 		self.guard_encryption()
 
-	def guard_encryption(self):
-		"""Encryption can only be armed while keys are present, and only the creator can hold them.
+	_ENC_FIELDS = ("encrypted", "enc_public_key", "enc_wrapped_key", "enc_kdf_salt",
+		"enc_key_iv", "enc_fingerprint")
 
-		The keys themselves are written by the owner-only setup_encryption endpoint, never through the
-		generic builder save — so here we just refuse an inconsistent state: 'encrypted' on with no
-		public key would silently store plaintext identities."""
-		if cint(self.encrypted) and not self.enc_public_key:
-			frappe.throw("Encryption can't be enabled without a key. Set it up from the form's settings.")
+	def guard_encryption(self):
+		"""Enforce the encryption invariants at the schema layer, so they hold even against a generic
+		REST write that bypasses the owner-only setup_encryption / disable_encryption endpoints:
+
+		- 'encrypted' requires the FULL key envelope. A partial state (e.g. public key but no wrapped
+		  key) would let respondents seal identities the creator can never unlock.
+		- Encryption is Collection-only. Linked mode writes the identity into the target record's owner
+		  in the clear and has nowhere to store the sealed blob.
+		- Once Published, the flag and key material are frozen. Identities are already sealed to the
+		  current key; flipping the flag on re-publish would strip or duplicate the identity column and
+		  could leave prior plaintext emails readable."""
+		if cint(self.encrypted):
+			if not all(self.get(f) for f in self._ENC_FIELDS):
+				frappe.throw("Encryption can't be enabled without its key material. "
+					"Set it up from the form's settings.")
+			if self.storage_mode != "Collection":
+				frappe.throw("Encryption is only available for Collection forms.")
+
+		before = self.get_doc_before_save()
+		if before and before.status == "Published":
+			if any(self.get(f) != before.get(f) for f in self._ENC_FIELDS):
+				frappe.throw("Encryption settings are frozen once a form is published.")
 
 	def validate_field_patterns(self):
 		"""Reject an invalid validation_pattern at save time (a builder typo), so it surfaces in the
