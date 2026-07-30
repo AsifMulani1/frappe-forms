@@ -219,7 +219,7 @@ class TestEncryption(IntegrationTestCase):
 		# default already suppresses versions and masks the bug. Force the production path
 		# (in_test=False) and assert an encrypted edit leaves NO Version row — one would capture the
 		# signed-in respondent's modified_by. Uses a dedicated form so the shared fixture is untouched.
-		form = encrypted_form("enc-ver", "Enc Ver Collection")
+		encrypted_form("enc-ver", "Enc Ver Collection")
 		res = api.submit("enc-ver", json.dumps({"full_name": "V1"}), enc_identity=SEALED)
 		name, token = res["name"], res["token"]
 		saved = frappe.in_test
