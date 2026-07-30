@@ -10,6 +10,7 @@ import binascii
 import json
 
 import frappe
+from cryptography.hazmat.primitives.asymmetric import ec
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, validate_email_address
 
@@ -56,6 +57,15 @@ def _validate_enc_identity(blob: str | None):
 	if len(raw["epk"]) != 65 or raw["epk"][0] != 0x04:
 		frappe.throw("Encrypted identity is malformed.")
 	if len(raw["iv"]) != 12 or len(raw["ct"]) < 16:
+		frappe.throw("Encrypted identity is malformed.")
+	# epk must be a genuine point on the P-256 curve — not merely 65 shaped bytes. An off-curve point
+	# is rejected by the browser's importKey(), so the identity could never be opened. This is the
+	# furthest a server without the private key can go toward "decryptable by the creator": we can
+	# confirm the ephemeral key is a usable ECDH public key, but NOT that the ciphertext was sealed to
+	# the creator's key — verifying that would require the private key we deliberately never hold.
+	try:
+		ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw["epk"])
+	except ValueError:
 		frappe.throw("Encrypted identity is malformed.")
 
 

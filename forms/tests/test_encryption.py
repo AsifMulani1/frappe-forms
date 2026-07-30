@@ -10,18 +10,29 @@ import base64
 import json
 
 import frappe
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from frappe.tests import IntegrationTestCase
 
 from forms import api
 from forms.admin import crud
 from forms.compile import publish
 
-# Opaque to the server (all-zero payload — only the creator's browser could decrypt a real one), but
-# the component *lengths* mirror a genuine sealed envelope so it passes _validate_enc_identity:
-# epk = 65-byte uncompressed P-256 point (0x04 prefix), iv = 12-byte GCM nonce, ct >= 16-byte tag.
+
+def _real_epk() -> bytes:
+	"""A genuine 65-byte uncompressed P-256 public point — what a real browser ephemeral key yields
+	and what _validate_enc_identity's on-curve check requires."""
+	priv = ec.generate_private_key(ec.SECP256R1())
+	return priv.public_key().public_bytes(
+		serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+
+
+# Opaque to the server (the payload is unopenable without the creator's private key), but the epk is a
+# real on-curve point and the component lengths mirror a genuine sealed envelope, so it passes
+# _validate_enc_identity: epk = 65-byte P-256 point, iv = 12-byte GCM nonce, ct >= 16-byte tag.
 SEALED = json.dumps({
 	"v": 1,
-	"epk": base64.b64encode(bytes([4]) + bytes(64)).decode(),
+	"epk": base64.b64encode(_real_epk()).decode(),
 	"iv": base64.b64encode(bytes(12)).decode(),
 	"ct": base64.b64encode(bytes(32)).decode(),
 })
@@ -148,6 +159,20 @@ class TestEncryption(IntegrationTestCase):
 		try:
 			with self.assertRaises(frappe.ValidationError):
 				api.submit("enc-test", json.dumps({"full_name": "Short EPK"}), enc_identity=bad)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_off_curve_epk_refused(self):
+		# 65 bytes with the 0x04 prefix but NOT a real P-256 point (the (0,0) "point"): the browser's
+		# importKey() rejects it, so the sealed identity could never be opened. Must be refused here.
+		off_curve = base64.b64encode(bytes([4]) + bytes(64)).decode()
+		bad = json.dumps({"v": 1, "epk": off_curve,
+			"iv": base64.b64encode(bytes(12)).decode(),
+			"ct": base64.b64encode(bytes(32)).decode()})
+		frappe.set_user("Guest")
+		try:
+			with self.assertRaises(frappe.ValidationError):
+				api.submit("enc-test", json.dumps({"full_name": "Off Curve"}), enc_identity=bad)
 		finally:
 			frappe.set_user("Administrator")
 
