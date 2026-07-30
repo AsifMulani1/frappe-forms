@@ -60,3 +60,7 @@ jspm_packages/
 
 # React visual-reference prototype — not part of the shipped app.
 design-reference/
+
+# Local QA / dev artifacts (Playwright MCP output, ad-hoc screenshots).
+.playwright-mcp/
+qa-dashboard.png
