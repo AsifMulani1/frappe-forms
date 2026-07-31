@@ -85,8 +85,18 @@ def cleanup_orphan_uploads():
 		frappe.db.commit()
 
 
-def _attach_file(file_url: str, dt: str, dn: str):
-	"""Link an already-uploaded File to the submission record it belongs to."""
+def _attach_file(file_url: str, dt: str, dn: str, neutralise_owner: bool = False):
+	"""Link an already-uploaded File to the submission record it belongs to.
+
+	On an encrypted form (neutralise_owner), also strip the uploader's identity from the File row: a
+	signed-in respondent's upload is created with File.owner = their user, which — joined to
+	attached_to_name — would deanonymise them despite the sealed identity blob. Guest uploads are
+	already owned by Guest, so this only matters for signed-in respondents."""
 	name = frappe.db.get_value("File", {"file_url": file_url}, "name")
-	if name:
-		frappe.db.set_value("File", name, {"attached_to_doctype": dt, "attached_to_name": dn})
+	if not name:
+		return
+	values = {"attached_to_doctype": dt, "attached_to_name": dn}
+	if neutralise_owner:
+		values["owner"] = "Guest"
+		values["modified_by"] = "Guest"
+	frappe.db.set_value("File", name, values)

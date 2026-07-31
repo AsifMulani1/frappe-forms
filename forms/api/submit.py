@@ -5,9 +5,11 @@
 # and inserts/updates the response (Collection or Linked) with ignore_permissions=True — we
 # never grant Guest broad create perms. The _insert_*/_update_* helpers do the actual writes.
 
+import base64
 import json
 
 import frappe
+from cryptography.hazmat.primitives.asymmetric import ec
 from frappe.rate_limiter import rate_limit
 from frappe.utils import cint, validate_email_address
 
@@ -17,7 +19,59 @@ from forms.api.render import _accepting_status, _field_spec, _published_form, _s
 from forms.api.uploads import _attach_file
 from forms.api.validation import _coerce_and_validate, _visible_specs
 from forms.compile import LAYOUT_TYPES, resolve_fieldname
-from forms.config import SUBMIT_RATE_LIMIT, SUBMIT_RATE_WINDOW
+from forms.config import ENC_IDENTITY_MAX_BYTES, SUBMIT_RATE_LIMIT, SUBMIT_RATE_WINDOW
+
+
+def _validate_enc_identity(blob: str | None) -> None:
+	"""Confirm a sealed identity envelope is present and well-formed before it's stored.
+
+	The server can't read the ciphertext (only the creator's browser holds the private key), but it
+	MUST reject a missing or malformed envelope: otherwise an encrypted response persists with no
+	recoverable identity — undecryptable forever, and indistinguishable from a genuine one. We check
+	the envelope shape sealIdentity() produces: {v:1, epk, iv, ct} with base64 parts.
+	"""
+	if not blob:
+		frappe.throw("This form encrypts your identity, but none was received. Please retry.")
+	# Byte length, not character count: the column is capped in bytes and a multibyte payload must
+	# not slip past the guard.
+	if len(blob.encode("utf-8")) > ENC_IDENTITY_MAX_BYTES:
+		frappe.throw("Encrypted identity is too large.")
+	try:
+		env = json.loads(blob)
+	except (ValueError, TypeError):
+		frappe.throw("Encrypted identity is malformed.")
+	if not isinstance(env, dict) or env.get("v") != 1:
+		frappe.throw("Encrypted identity is malformed.")
+	raw = {}
+	for part in ("epk", "iv", "ct"):
+		val = env.get(part)
+		if not isinstance(val, str) or not val:
+			frappe.throw("Encrypted identity is malformed.")
+		try:
+			# binascii.Error subclasses ValueError, so this one except covers bad base64.
+			raw[part] = base64.b64decode(val, validate=True)
+		except ValueError:
+			frappe.throw("Encrypted identity is malformed.")
+	# Decoded lengths must match what the browser's openIdentity() can actually consume, or we'd
+	# accept an envelope that is structurally impossible to decrypt: epk is an uncompressed P-256
+	# public key (65 bytes, 0x04 prefix), iv is a 12-byte AES-GCM nonce, ct carries at least the
+	# 16-byte GCM tag. Base64 validity alone lets wrong-length junk through.
+	if len(raw["epk"]) != 65 or raw["epk"][0] != 0x04:
+		frappe.throw("Encrypted identity is malformed.")
+	if len(raw["iv"]) != 12 or len(raw["ct"]) < 16:
+		frappe.throw("Encrypted identity is malformed.")
+	# epk must be a genuine point on the P-256 curve — not merely 65 shaped bytes. This is NOT
+	# redundant with the length/prefix check above: from_encoded_point also accepts a 33-byte
+	# compressed point, which the browser's importKey('raw', …) cannot consume — the length/prefix
+	# check pins the uncompressed encoding, this pins on-curve validity. An off-curve point would be
+	# rejected by the browser, so the identity could never be opened. This is the furthest a server
+	# without the private key can go toward "decryptable by the creator": we confirm the ephemeral key
+	# is a usable ECDH public key, but NOT that the ciphertext was sealed to the creator's key —
+	# verifying that would require the private key we deliberately never hold.
+	try:
+		ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw["epk"])
+	except ValueError:
+		frappe.throw("Encrypted identity is malformed.")
 
 
 def _block_if_duplicate(form, respondent_email: str | None):
@@ -43,7 +97,7 @@ def _block_if_duplicate(form, respondent_email: str | None):
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="slug", limit=SUBMIT_RATE_LIMIT, seconds=SUBMIT_RATE_WINDOW)
 def submit(slug: str, data: str, hp: str | None = None, token: str | None = None,
-		email: str | None = None, record: str | None = None):
+		email: str | None = None, record: str | None = None, enc_identity: str | None = None):
 	"""Validate + insert (or, with a valid edit token, update) a submission.
 
 	Returns {name}, plus {token} when the form allows editing and this is a new record.
@@ -67,19 +121,31 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 		or (token and allow_edit and form.storage_mode != "Linked"))
 
 	# Capture the respondent's email when the form collects it (typed, or the logged-in user's).
+	# On an encrypted form the email never reaches the server in the clear — the browser sealed it
+	# into enc_identity — so we don't capture, validate, or store a plaintext address here.
 	respondent_email = None
-	if cint(form.collect_email):
+	encrypted = cint(form.encrypted)
+	if cint(form.collect_email) and not encrypted:
 		respondent_email = (email or "").strip() or _session_email()
 		if not respondent_email:
 			frappe.throw("Please provide your email address.")
 		if not validate_email_address(respondent_email):
 			frappe.throw("Please provide a valid email address.")
 
+	# On an encrypted form the identity lives only in the sealed blob. Require it (and check its
+	# shape) on a new response; on an edit, validate only a blob that's actually being re-sent, so a
+	# metadata-only edit doesn't wipe the identity already on the row.
+	if encrypted and (enc_identity or not is_edit):
+		_validate_enc_identity(enc_identity)
+
 	if not is_edit:
 		accepting, closed_reason = _accepting_status(form)
 		if not accepting:
 			frappe.throw(closed_reason or "This form is not accepting responses.")
-		_block_if_duplicate(form, respondent_email)
+		# One-per-user dedup keys off the plaintext email or the record owner. Encrypted forms have
+		# neither (the email is sealed, the owner is anonymised), so the rule can't be enforced.
+		if not encrypted:
+			_block_if_duplicate(form, respondent_email)
 
 	# Display-only fields (section headers) carry no data; fields hidden by conditional logic are
 	# dropped here so a hidden required field can't block the submit and hidden answers aren't stored.
@@ -107,10 +173,10 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 		else:
 			result["name"] = _insert_linked(form, clean, specs)
 	elif token and allow_edit:
-		result["name"] = _update_collection(form, clean, specs, token, respondent_email)
+		result["name"] = _update_collection(form, clean, specs, token, respondent_email, enc_identity)
 	else:
 		new_token = frappe.generate_hash(length=24) if allow_edit else None
-		result["name"] = _insert_collection(form, clean, specs, new_token, respondent_email)
+		result["name"] = _insert_collection(form, clean, specs, new_token, respondent_email, enc_identity)
 		if new_token:
 			result["token"] = new_token
 
@@ -125,9 +191,27 @@ def submit(slug: str, data: str, hp: str | None = None, token: str | None = None
 			result["show_score"] = 1
 
 	frappe.db.commit()
-	_maybe_send_receipt(form, clean, specs, respondent_email)
+	# An encrypted form has no server-visible respondent address; a receipt would fall back to the
+	# signed-in user's real email and persist it (recipient + answers) in the Email Queue — plaintext
+	# identity in the DB, defeating the encryption. Skip it. The admin notification carries no
+	# respondent identity (respondent_email is None on encrypted forms), so it still runs.
+	if not encrypted:
+		_maybe_send_receipt(form, clean, specs, respondent_email)
 	_maybe_notify_admin(form, clean, specs, result["name"], respondent_email)
 	return result
+
+
+def _neutralise_identity(doc) -> None:
+	"""Strip the submitter's identity from a response's row metadata — the parent row AND every
+	child-table row. Frappe stamps owner/modified_by to the session user on every insert/save; for a
+	signed-in respondent on an encrypted form that would unmask them to any DB reader, so identity
+	must live only inside the sealed ciphertext blob. Child rows (checkboxes / grid answers) are
+	stamped the same way and are easy to overlook — a join from child to parent would deanonymise the
+	respondent otherwise."""
+	guest = {"owner": "Guest", "modified_by": "Guest"}
+	frappe.db.set_value(doc.doctype, doc.name, guest, update_modified=False)
+	for child in doc.get_all_children():
+		frappe.db.set_value(child.doctype, child.name, guest, update_modified=False)
 
 
 def _apply_value(doc, fieldname: str, spec: dict, value):
@@ -151,7 +235,8 @@ def _apply_value(doc, fieldname: str, spec: dict, value):
 
 
 def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
-		respondent_email: str | None = None) -> str:
+		respondent_email: str | None = None, enc_identity: str | None = None) -> str:
+	encrypted = cint(form.encrypted)
 	doc = frappe.new_doc(form.doctype_name)
 	for fieldname, spec in specs.items():
 		value = clean.get(fieldname)
@@ -165,19 +250,31 @@ def _insert_collection(form, clean: dict, specs: dict, token: str | None = None,
 		doc.edit_token = token
 	if respondent_email and doc.meta.get_field("respondent_email"):
 		doc.respondent_email = respondent_email
+	if encrypted:
+		# Store the sealed identity blob and keep no identifying trace on the row itself: skip the
+		# version log (its owner would be the respondent) so it can't be undone below.
+		if enc_identity and doc.meta.get_field("enc_identity"):
+			doc.enc_identity = enc_identity
+		doc.flags.ignore_version = True
 
 	doc.insert(ignore_permissions=True)
 
-	# Own the files uploaded for this submission (they were created unattached).
+	if encrypted:
+		# insert() stamps the session user onto the parent AND child rows — for a signed-in respondent
+		# that unmasks them to any DB reader. Scrub both so identity lives ONLY in the ciphertext blob.
+		_neutralise_identity(doc)
+
+	# Own the files uploaded for this submission (they were created unattached). On encrypted forms a
+	# signed-in uploader's identity would survive on File.owner, so neutralise that too.
 	for fieldname, spec in specs.items():
 		if spec["field_type"] == "file_upload" and clean.get(fieldname):
-			_attach_file(clean[fieldname], doc.doctype, doc.name)
+			_attach_file(clean[fieldname], doc.doctype, doc.name, neutralise_owner=encrypted)
 
 	return doc.name
 
 
 def _update_collection(form, clean: dict, specs: dict, token: str,
-		respondent_email: str | None = None) -> str:
+		respondent_email: str | None = None, enc_identity: str | None = None) -> str:
 	"""Re-save an existing submission addressed by its private edit token."""
 	name = frappe.db.get_value(form.doctype_name, {"edit_token": token}, "name")
 	if not name:
@@ -185,13 +282,27 @@ def _update_collection(form, clean: dict, specs: dict, token: str,
 	doc = frappe.get_doc(form.doctype_name, name)
 	for fieldname, spec in specs.items():
 		_apply_value(doc, fieldname, spec, clean.get(fieldname))
+	encrypted = cint(form.encrypted)
 	if respondent_email and doc.meta.get_field("respondent_email"):
 		doc.respondent_email = respondent_email
-	doc.save(ignore_permissions=True)
+	if encrypted and enc_identity and doc.meta.get_field("enc_identity"):
+		doc.enc_identity = enc_identity
+	# ignore_version MUST travel through save(): _save() overwrites doc.flags.ignore_version with its
+	# own parameter (defaulting to frappe.in_test), so a flag set here is silently dropped in
+	# production — and the resulting Version record's owner/modified_by would unmask the respondent.
+	save_kwargs = {"ignore_permissions": True}
+	if encrypted:
+		save_kwargs["ignore_version"] = True
+	doc.save(**save_kwargs)
+
+	if encrypted:
+		# save() re-stamps the session user onto the parent and freshly re-inserted child rows — for a
+		# signed-in respondent that re-exposes them on every edit. Re-scrub parent + children.
+		_neutralise_identity(doc)
 
 	for fieldname, spec in specs.items():
 		if spec["field_type"] == "file_upload" and clean.get(fieldname):
-			_attach_file(clean[fieldname], doc.doctype, doc.name)
+			_attach_file(clean[fieldname], doc.doctype, doc.name, neutralise_owner=encrypted)
 
 	return doc.name
 

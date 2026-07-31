@@ -109,6 +109,11 @@ def public_render_spec(form, check_state: bool = True) -> dict:
 		"allow_delete": cint(form.allow_delete),
 		"is_quiz": cint(form.is_quiz),
 		"show_score": cint(form.show_score),
+		# Identity encryption: the respondent SPA seals the collected email to enc_public_key before
+		# posting. The public key is public by design; the fingerprint lets the creator verify it.
+		"encrypted": cint(form.encrypted),
+		"enc_public_key": form.enc_public_key if cint(form.encrypted) else None,
+		"enc_fingerprint": form.enc_fingerprint if cint(form.encrypted) else None,
 		"accepting": accepting,
 		"closed_reason": closed_reason,
 		"fields": [_public_field(f) for f in form.fields],
