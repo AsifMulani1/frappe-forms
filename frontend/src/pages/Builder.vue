@@ -309,7 +309,7 @@ function openShare() { shareOpen.value = true }
 
       <!-- right: autosave state, settings, preview, overflow, single primary action -->
       <div class="flex items-center gap-1.5 ml-auto">
-        <span class="text-[11px] text-ink-gray-4 flex items-center gap-1 mr-1 w-[52px] justify-end">
+        <span class="text-2xs text-ink-gray-4 flex items-center gap-1 mr-1 w-[52px] justify-end">
           <template v-if="saveState === 'saving'"><Icon name="loader" :size="12" class="animate-spin" />Saving</template>
           <template v-else-if="saveState === 'saved'"><Icon name="check" :size="12" class="text-ink-green-600" />Saved</template>
         </span>

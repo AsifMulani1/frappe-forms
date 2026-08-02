@@ -38,10 +38,10 @@ function gridCbChecked(row, col) {
 <template>
   <div class="flex flex-col gap-2.5">
     <div class="flex flex-col gap-1">
-      <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">
+      <span class="text-md font-medium text-ink-gray-9 leading-snug">
         {{ field.label }}<span v-if="field.reqd" class="text-ink-red-400 ml-0.5">*</span>
       </span>
-      <span v-if="field.help_text" class="text-[13px] text-ink-gray-5 leading-snug">{{ field.help_text }}</span>
+      <span v-if="field.help_text" class="text-sm text-ink-gray-5 leading-snug">{{ field.help_text }}</span>
     </div>
 
     <FormControl v-if="field.field_type === 'short_answer'" type="text" size="lg" placeholder="Your answer"
@@ -98,7 +98,7 @@ function gridCbChecked(row, col) {
       <div class="flex items-center gap-3.5">
         <button v-for="n in scaleRange(field)" :key="n" type="button" class="flex flex-col items-center gap-1.5"
                 @click="emit('set', n)">
-          <span class="text-[13px] text-ink-gray-6">{{ n }}</span>
+          <span class="text-sm text-ink-gray-6">{{ n }}</span>
           <span class="r-radio" :style="value === n ? 'border-color:var(--accent)' : ''">
             <span v-if="value === n" style="width:9px;height:9px;border-radius:50%;background:var(--accent)" />
           </span>

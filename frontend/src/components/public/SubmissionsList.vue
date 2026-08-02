@@ -20,7 +20,7 @@ function fmtDate(dt) {
       <div v-for="s in subs" :key="s.name" class="flex items-center gap-3 py-2.5">
         <div class="flex flex-col min-w-0 flex-1">
           <span class="text-sm text-ink-gray-8 truncate">{{ s.label }}</span>
-          <span class="text-[11px] text-ink-gray-5">{{ fmtDate(s.creation) }}</span>
+          <span class="text-2xs text-ink-gray-5">{{ fmtDate(s.creation) }}</span>
         </div>
         <a v-if="s.edit_param && meta.can_edit" :href="`/forms/f/${slug}?${s.edit_param}`"
            class="text-sm text-ink-gray-7 hover:text-ink-gray-9">Edit</a>

@@ -466,8 +466,8 @@ async function submit() {
                  @focusin="activeField = '__email__'" @pointerdown="activeField = '__email__'">
               <div class="flex flex-col gap-2.5">
                 <div class="flex flex-col gap-1">
-                  <span class="text-[15px] font-medium text-ink-gray-9 leading-snug">Email<span class="text-ink-red-400 ml-0.5">*</span></span>
-                  <span class="text-[13px] text-ink-gray-5 leading-snug">Recorded with your response.</span>
+                  <span class="text-md font-medium text-ink-gray-9 leading-snug">Email<span class="text-ink-red-400 ml-0.5">*</span></span>
+                  <span class="text-sm text-ink-gray-5 leading-snug">Recorded with your response.</span>
                 </div>
                 <FormControl type="email" size="lg" placeholder="name@example.com"
                        :modelValue="respondentEmail" @update:modelValue="respondentEmail = $event; emailError = false" />

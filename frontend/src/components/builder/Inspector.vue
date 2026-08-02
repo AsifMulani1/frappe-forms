@@ -88,11 +88,11 @@ const mapOptions = computed(() => [
 
       <div v-if="prefs.devMode" class="flex flex-col gap-1.5 px-4 py-3.5 border-b border-outline-gray-1">
         <span class="text-xs text-ink-gray-7">Column name</span>
-        <div class="flex items-center justify-between h-8 px-2.5 rounded bg-surface-gray-2 font-mono text-[13px]">
+        <div class="flex items-center justify-between h-8 px-2.5 rounded bg-surface-gray-2 font-mono text-sm">
           <span class="text-ink-gray-8">{{ field.fieldname || '(derived at publish)' }}</span>
           <Icon :name="field.fieldname ? 'lock' : 'pencil'" :size="13" class="text-ink-gray-5" />
         </div>
-        <span class="text-[11.5px] text-ink-gray-5">
+        <span class="text-2xs text-ink-gray-5">
           {{ field.fieldname ? 'Frozen at publish - relabeling won’t rename the column or orphan data.' : 'Derived from the label until you publish, then frozen.' }}
         </span>
       </div>
@@ -100,14 +100,14 @@ const mapOptions = computed(() => [
       <div v-if="prefs.devMode && linked" class="px-4 py-3.5 border-b border-outline-gray-1">
         <FormControl type="select" label="Maps to field" :options="mapOptions"
           :modelValue="field.mapped_field || ''" @update:modelValue="emit('update-field', field.name, { mapped_field: $event })" />
-        <span class="text-[11.5px] text-ink-gray-5 mt-1.5 block">
+        <span class="text-2xs text-ink-gray-5 mt-1.5 block">
           {{ field.mapped_field ? `Fills ${form.target_doctype}.${field.mapped_field}` : 'Not mapped - ignored on submit.' }}
         </span>
       </div>
 
       <div v-if="hasOptions(field.field_type)" class="px-4 py-3.5 border-b border-outline-gray-1">
         <span class="text-xs text-ink-gray-7">Options</span>
-        <span class="text-[11.5px] text-ink-gray-5 block mt-1">Edit options inline on the card.</span>
+        <span class="text-2xs text-ink-gray-5 block mt-1">Edit options inline on the card.</span>
       </div>
 
       <!-- linear scale -->
@@ -143,8 +143,8 @@ const mapOptions = computed(() => [
 
       <div class="flex flex-col gap-3 px-4 py-3.5 border-b border-outline-gray-1">
         <Switch :modelValue="!!field.reqd" label="Required field" @update:modelValue="emit('update-field', field.name, { reqd: $event ? 1 : 0 })" />
-        <span v-if="field.field_type === 'email'" class="text-[11.5px] text-ink-gray-5">Checks for a valid email address.</span>
-        <span v-if="field.field_type === 'number'" class="text-[11.5px] text-ink-gray-5">Whole numbers only.</span>
+        <span v-if="field.field_type === 'email'" class="text-2xs text-ink-gray-5">Checks for a valid email address.</span>
+        <span v-if="field.field_type === 'number'" class="text-2xs text-ink-gray-5">Whole numbers only.</span>
       </div>
 
       <!-- conditional logic -->
@@ -170,7 +170,7 @@ const mapOptions = computed(() => [
         <span class="text-xs text-ink-gray-7">Quiz</span>
         <FormControl type="number" label="Points" :modelValue="field.points || ''"
           @update:modelValue="emit('update-field', field.name, { points: +$event || 0 })" />
-        <span class="text-[11.5px] text-ink-gray-5">Correct answer</span>
+        <span class="text-2xs text-ink-gray-5">Correct answer</span>
         <div v-if="hasOptions(field.field_type) || field.field_type === 'yes_no'" class="flex flex-wrap gap-1.5">
           <button v-for="o in quizOptions(field)" :key="o" type="button"
                   class="px-2.5 h-7 rounded-md border text-sm transition-colors"
@@ -183,10 +183,10 @@ const mapOptions = computed(() => [
 
       <div v-if="prefs.devMode" class="px-4 py-3.5 mt-auto bg-surface-gray-1">
         <div class="flex items-center justify-between mb-2">
-          <span class="text-[10.5px] text-ink-gray-5 font-mono uppercase tracking-wider">Compiles to</span>
+          <span class="text-2xs text-ink-gray-5 font-mono">Compiles to</span>
           <button class="text-xs text-ink-gray-7 hover:text-ink-gray-9" @click="emit('open-dev')">View schema →</button>
         </div>
-        <div class="flex flex-col gap-1.5 font-mono text-[12px]">
+        <div class="flex flex-col gap-1.5 font-mono text-xs">
           <div class="flex justify-between"><span class="text-ink-gray-5">fieldtype</span><span class="text-ink-gray-9">{{ FT[field.field_type].doctype }}</span></div>
           <div class="flex justify-between"><span class="text-ink-gray-5">reqd</span><span class="text-ink-gray-9">{{ field.reqd ? '1' : '0' }}</span></div>
         </div>

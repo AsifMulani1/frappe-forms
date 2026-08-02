@@ -154,7 +154,7 @@ async function exportCsv() {
             <span class="text-sm font-medium text-ink-gray-9 truncate max-w-[260px]">{{ meta.data?.title }}</span>
             <Badge v-if="meta.data" :theme="meta.data.status === 'Published' ? 'green' : 'gray'" :label="meta.data.status" />
           </div>
-          <span v-if="prefs.devMode" class="text-[11px] text-ink-gray-5 font-mono">{{ meta.data?.doctype_name }}</span>
+          <span v-if="prefs.devMode" class="text-2xs text-ink-gray-5 font-mono">{{ meta.data?.doctype_name }}</span>
         </div>
       </div>
 
@@ -208,20 +208,20 @@ async function exportCsv() {
           <div v-else-if="summary.data" class="grid grid-cols-4 gap-3">
             <div class="stat-card">
               <div class="flex items-center justify-between"><span class="text-xs text-ink-gray-5">Total responses</span><Icon name="inbox" :size="15" class="text-ink-gray-4" /></div>
-              <span class="text-[26px] font-medium text-ink-gray-9">{{ summary.data.total.toLocaleString() }}</span>
+              <span class="text-5xl leading-none font-medium text-ink-gray-9">{{ summary.data.total.toLocaleString() }}</span>
             </div>
             <div class="stat-card">
               <div class="flex items-center justify-between"><span class="text-xs text-ink-gray-5">Completion rate</span><Icon name="check-check" :size="15" class="text-ink-gray-4" /></div>
-              <span class="text-[26px] font-medium text-ink-gray-9">{{ summary.data.completion }}%</span>
+              <span class="text-5xl leading-none font-medium text-ink-gray-9">{{ summary.data.completion }}%</span>
               <span class="text-xs text-ink-gray-5">{{ summary.data.total.toLocaleString() }} of {{ (summary.data.views || 0).toLocaleString() }} opens</span>
             </div>
             <div class="stat-card">
               <div class="flex items-center justify-between"><span class="text-xs text-ink-gray-5">Confirmed</span><Icon name="user-check" :size="15" class="text-ink-gray-4" /></div>
-              <span class="text-[26px] font-medium text-ink-gray-9">{{ summary.data.confirmed }}</span>
+              <span class="text-5xl leading-none font-medium text-ink-gray-9">{{ summary.data.confirmed }}</span>
             </div>
             <div class="stat-card">
               <div class="flex items-center justify-between"><span class="text-xs text-ink-gray-5">Avg. rating</span><Icon name="star" :size="15" class="text-ink-gray-4" /></div>
-              <span class="text-[26px] font-medium text-ink-gray-9">{{ summary.data.rating ? summary.data.rating.average : '-' }}</span>
+              <span class="text-5xl leading-none font-medium text-ink-gray-9">{{ summary.data.rating ? summary.data.rating.average : '-' }}</span>
             </div>
           </div>
           <div v-else class="border border-outline-gray-1 rounded-md bg-surface-base text-center py-12 px-4">
@@ -248,7 +248,7 @@ async function exportCsv() {
           <div v-if="summary.data?.rating" class="border border-outline-gray-1 rounded-md bg-surface-base p-[18px]">
             <span class="text-sm font-medium text-ink-gray-9">{{ summary.data.rating.label }}</span>
             <div class="flex items-center gap-3 mt-4">
-              <span class="text-[38px] font-medium text-ink-gray-9">{{ summary.data.rating.average }}</span>
+              <span class="text-8xl leading-none font-medium text-ink-gray-9">{{ summary.data.rating.average }}</span>
               <span class="text-xs text-ink-gray-5">from {{ summary.data.rating.count }} ratings</span>
             </div>
             <div class="flex flex-col gap-1.5 mt-4">
@@ -280,7 +280,7 @@ async function exportCsv() {
               </div>
               <div class="flex flex-col min-w-0">
                 <span class="text-sm truncate" :class="encrypted && !unlocked ? 'text-ink-gray-5 italic' : 'text-ink-gray-9'">{{ respondentLabel(r) }}</span>
-                <span v-if="!encrypted" class="text-[11px] text-ink-gray-5 truncate">{{ r[subs.data.display_fields[1]?.fieldname] || '' }}</span>
+                <span v-if="!encrypted" class="text-2xs text-ink-gray-5 truncate">{{ r[subs.data.display_fields[1]?.fieldname] || '' }}</span>
               </div>
             </div>
             <span v-if="subs.data?.has_workflow" class="w-[100px]">
@@ -301,7 +301,7 @@ async function exportCsv() {
               <Avatar :label="drawer.fields[0]?.value || drawer.name" size="md" />
               <div class="flex flex-col leading-tight">
                 <span class="text-sm font-medium text-ink-gray-9">{{ drawer.fields[0]?.value || drawer.name }}</span>
-                <span class="text-[11px] text-ink-gray-5 font-mono">{{ drawer.name }}</span>
+                <span class="text-2xs text-ink-gray-5 font-mono">{{ drawer.name }}</span>
               </div>
             </div>
             <Button variant="ghost" theme="gray" @click="openRec = null"><Icon name="x" :size="16" /></Button>
@@ -323,26 +323,26 @@ async function exportCsv() {
             <div v-if="drawer.encrypted" class="mb-4 rounded-md border border-outline-gray-1 bg-surface-gray-1 p-3 flex items-center gap-2.5">
               <Icon :name="unlocked ? 'shield-check' : 'lock'" :size="15" :class="unlocked ? 'text-ink-green-600' : 'text-ink-gray-5'" />
               <div class="flex flex-col min-w-0 flex-1">
-                <span class="text-[11px] text-ink-gray-5">Respondent (encrypted)</span>
+                <span class="text-2xs text-ink-gray-5">Respondent (encrypted)</span>
                 <span class="text-sm text-ink-gray-9 truncate">{{ unlocked ? (drawerEmail || '—') : 'Locked' }}</span>
               </div>
               <Button v-if="!unlocked" variant="subtle" theme="gray" size="sm" @click="unlockOpen = true">Unlock</Button>
             </div>
 
-            <span class="text-[10px] text-ink-gray-5 font-mono uppercase tracking-wider">Record fields</span>
+            <span class="text-2xs text-ink-gray-5 font-mono">Record fields</span>
             <div class="border border-outline-gray-1 rounded-md overflow-hidden bg-surface-base mt-2">
               <div class="flex items-center justify-between px-3 py-2.5 border-t border-outline-gray-1 first:border-t-0">
-                <span class="text-[12px] text-ink-gray-5 font-mono">name</span>
+                <span class="text-xs text-ink-gray-5 font-mono">name</span>
                 <span class="text-sm text-ink-gray-9 truncate max-w-[220px] text-right">{{ drawer.name }}</span>
               </div>
               <div v-for="f in drawer.fields" :key="f.fieldname" class="flex items-center justify-between px-3 py-2.5 border-t border-outline-gray-1">
-                <span class="text-[12px] text-ink-gray-5 font-mono">{{ f.fieldname }}</span>
+                <span class="text-xs text-ink-gray-5 font-mono">{{ f.fieldname }}</span>
                 <span class="text-sm text-ink-gray-9 truncate max-w-[220px] text-right">{{ f.value || '-' }}</span>
               </div>
             </div>
 
             <template v-for="(vals, label) in drawer.multi" :key="label">
-              <span class="text-[10px] text-ink-gray-5 font-mono uppercase tracking-wider block mt-4.5 mt-4">{{ label }}</span>
+              <span class="text-2xs text-ink-gray-5 font-mono block mt-4.5 mt-4">{{ label }}</span>
               <div class="flex flex-wrap gap-1.5 mt-2">
                 <Badge v-for="v in vals" :key="v" theme="gray" :label="v" />
                 <span v-if="!vals.length" class="text-sm text-ink-gray-5">-</span>
@@ -351,7 +351,7 @@ async function exportCsv() {
 
             <div class="flex items-start gap-2 mt-5">
               <Icon name="shield-check" :size="14" class="text-ink-green-600 mt-px shrink-0" />
-              <span class="text-[12px] text-ink-gray-5">Stored in <span class="font-mono text-ink-gray-7">{{ drawer.doctype }}</span>, validated server-side and audited in the version log.</span>
+              <span class="text-xs text-ink-gray-5">Stored in <span class="font-mono text-ink-gray-7">{{ drawer.doctype }}</span>, validated server-side and audited in the version log.</span>
             </div>
           </div>
         </div>
@@ -362,7 +362,7 @@ async function exportCsv() {
     <Dialog v-model="unlockOpen" :options="{ title: 'Unlock responses' }">
       <template #body-content>
         <div class="flex flex-col gap-4">
-          <p class="text-[13px] leading-5 text-ink-gray-6">
+          <p class="text-p-sm text-ink-gray-6">
             Enter the passphrase you set when enabling encryption. It decrypts who responded in your
             browser — the server never sees it.
           </p>

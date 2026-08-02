@@ -15,7 +15,7 @@ defineEmits(['add'])
         <span class="pi-icon"><Icon :name="t.icon" :size="15" /></span>
         <div class="flex flex-col gap-px flex-1 min-w-0">
           <span class="text-sm text-ink-gray-8">{{ t.label }}</span>
-          <span class="text-[11px] text-ink-gray-5 truncate">{{ t.note }}</span>
+          <span class="text-2xs text-ink-gray-5 truncate">{{ t.note }}</span>
         </div>
         <Icon name="plus" :size="14" class="text-ink-gray-4" />
       </div>
@@ -23,7 +23,7 @@ defineEmits(['add'])
     <div class="px-4 py-3 border-t border-outline-gray-1 mt-auto">
       <div class="flex items-start gap-2">
         <Icon name="info" :size="14" class="text-ink-gray-5 mt-px shrink-0" />
-        <span class="text-[11.5px] text-ink-gray-5">
+        <span class="text-2xs text-ink-gray-5">
           {{ prefs.devMode
             ? 'Each field becomes a Frappe DocField. Open Developer view to see the schema.'
             : 'Click or drag a field to add it. Drag fields in the form to reorder.' }}
