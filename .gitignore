@@ -60,3 +60,6 @@ jspm_packages/
 
 # React visual-reference prototype — not part of the shipped app.
 design-reference/
+
+# Playwright MCP session artifacts
+.playwright-mcp/
