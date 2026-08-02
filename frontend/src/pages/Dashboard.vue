@@ -126,6 +126,42 @@ const groups = computed(() => {
     .filter((g) => g.items.length)
 })
 
+// --- collapsible time buckets ---
+// The long tail of old forms is what makes the list "go on and on", so the
+// older buckets fold away by default — recency-first is the right default for a
+// forms dashboard. Every header stays clickable to fold/unfold at will.
+const COLLAPSIBLE = new Set(['last-week', 'earlier'])
+const collapsed = ref(new Set())
+// Seed the default collapsed set once per view load (never clobber user toggles
+// on later data refreshes). The top group always stays open, so a user whose
+// forms are *all* old still lands on visible rows, not a wall of headers.
+let collapsedInitView = null
+watch([activeView, groups], () => {
+  if (collapsedInitView === activeView.value || !groups.value.length) return
+  const next = new Set()
+  groups.value.forEach((g, i) => { if (i > 0 && COLLAPSIBLE.has(g.key)) next.add(g.key) })
+  collapsed.value = next
+  collapsedInitView = activeView.value
+}, { immediate: true })
+
+function toggleBucket(g) {
+  const next = new Set(collapsed.value)
+  if (next.has(g.key)) next.delete(g.key)
+  else next.add(g.key)
+  collapsed.value = next
+}
+
+// The rendered groups. An active search suppresses collapsing so every match
+// stays visible; otherwise a folded bucket renders no rows (its header still
+// shows the count).
+const renderGroups = computed(() => {
+  const suppress = !!search.value.trim()
+  return groups.value.map((g) => {
+    const isCollapsed = !suppress && collapsed.value.has(g.key)
+    return { ...g, total: g.items.length, shown: isCollapsed ? [] : g.items, collapsed: isCollapsed, collapsible: !suppress }
+  })
+})
+
 // Grid track sizes for the list — kept in lockstep with the cells rendered per
 // row below (leading dot, name, [responses], [status], updated, menu).
 // Equal-width, uniformly start-aligned meta columns so their edges line up on
@@ -385,8 +421,18 @@ function openShare(f) {
             <ListHeaderCell />
           </ListHeader>
 
-          <ListGroup v-for="grp in groups" :key="grp.key" :label="grp.label">
-            <ListRow v-for="f in grp.items" :key="f.name" class="group" @click="router.push(`/${f.slug}/edit`)">
+          <ListGroup v-for="grp in renderGroups" :key="grp.key">
+            <template #header>
+              <button v-if="grp.collapsible" type="button"
+                      class="group/hdr flex items-center gap-1.5 h-full pr-2 -ml-1 pl-1 rounded text-sm-medium text-ink-gray-5 hover:text-ink-gray-7"
+                      @click="toggleBucket(grp)">
+                <Icon name="chevron-right" :size="14" class="text-ink-gray-4 transition-transform" :class="{ 'rotate-90': !grp.collapsed }" />
+                <span>{{ grp.label }}</span>
+                <span class="text-ink-gray-4 tabular-nums">{{ grp.total }}</span>
+              </button>
+              <span v-else>{{ grp.label }}</span>
+            </template>
+            <ListRow v-for="f in grp.shown" :key="f.name" class="group" @click="router.push(`/${f.slug}/edit`)">
               <!-- leading cell: status dot by default, checkbox on hover / when selected -->
               <ListCell>
                 <span class="relative w-4 h-4 shrink-0" @click.stop>
