@@ -192,28 +192,28 @@ async function disableEncryption() {
                 <span class="text-sm font-medium text-ink-gray-8">Identity is encrypted</span>
                 <Badge v-if="encFrozen" theme="gray" label="Frozen" />
               </div>
-              <div class="flex items-center gap-2 text-[13px] text-ink-gray-6">
+              <div class="flex items-center gap-2 text-sm text-ink-gray-6">
                 <span>Key fingerprint</span>
                 <span class="font-mono text-ink-gray-8">{{ form.enc_fingerprint || '—' }}</span>
               </div>
-              <p class="text-[13px] leading-5 text-ink-gray-5">
+              <p class="text-p-sm text-ink-gray-5">
                 You’ll unlock responses with your passphrase. There’s no recovery — if you lose it,
                 who responded can’t be recovered.
               </p>
             </div>
 
             <div v-else class="rounded-lg border border-outline-gray-1 bg-surface-gray-1 p-3.5">
-              <p class="text-[13px] leading-5 text-ink-gray-5">
+              <p class="text-p-sm text-ink-gray-5">
                 When on, each respondent’s email is sealed in their browser to your public key. The
                 server stores only ciphertext, and only you — with your passphrase — can decrypt it
                 on the responses screen. Answers themselves stay readable; only the “who” is sealed.
               </p>
             </div>
 
-            <p v-if="linked && !form.encrypted" class="text-[13px] text-ink-gray-5">
+            <p v-if="linked && !form.encrypted" class="text-sm text-ink-gray-5">
               Encryption is available for Collection forms only.
             </p>
-            <p v-if="encFrozen && !form.encrypted" class="text-[13px] text-ink-gray-5">
+            <p v-if="encFrozen && !form.encrypted" class="text-sm text-ink-gray-5">
               Encryption can only be turned on before a form is published.
             </p>
           </div>
@@ -375,7 +375,7 @@ async function disableEncryption() {
               <TabButtons
                 :buttons="[{ label: 'New collection', value: 'Collection' }, { label: 'Link existing', value: 'Linked' }]"
                 :modelValue="form.storage_mode" @update:modelValue="setStorage($event)" />
-              <span class="text-[13px] leading-5 text-ink-gray-5">
+              <span class="text-p-sm text-ink-gray-5">
                 {{ linked ? 'Saved as records of an existing DocType — no schema change on publish.' : 'A dedicated DocType is created for this form on publish.' }}
               </span>
             </div>
@@ -387,7 +387,7 @@ async function disableEncryption() {
               <div class="flex flex-col gap-2">
                 <Badge :theme="mappedCount < form.fields.length ? 'orange' : 'green'"
                   :label="`${mappedCount}/${form.fields.length} fields mapped`" />
-                <span class="text-[13px] leading-5 text-ink-gray-5">Map each field to a target column from the field's inspector panel.</span>
+                <span class="text-p-sm text-ink-gray-5">Map each field to a target column from the field's inspector panel.</span>
               </div>
               <div class="divide-y divide-outline-gray-1">
                 <SettingsRow title="Apply document permissions"
@@ -401,7 +401,7 @@ async function disableEncryption() {
               <span class="text-sm font-medium text-ink-gray-7">Generated DocType</span>
               <div class="flex items-center gap-2 h-9 px-2.5 rounded bg-surface-gray-2 text-ink-gray-8">
                 <Icon name="database" :size="14" class="text-ink-gray-6" />
-                <span class="font-mono text-[13px]">{{ form.doctype_name || '— created on publish —' }}</span>
+                <span class="font-mono text-sm">{{ form.doctype_name || '— created on publish —' }}</span>
               </div>
             </div>
           </div>
@@ -414,7 +414,7 @@ async function disableEncryption() {
   <Dialog v-model="passOpen" :options="{ title: 'Set an encryption passphrase' }">
     <template #body-content>
       <div class="flex flex-col gap-4">
-        <p class="text-[13px] leading-5 text-ink-gray-6">
+        <p class="text-p-sm text-ink-gray-6">
           This passphrase encrypts your private key. You’ll enter it to read who responded. It’s
           never sent to the server, and it can’t be reset — keep it safe.
         </p>

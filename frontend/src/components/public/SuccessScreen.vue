@@ -19,7 +19,7 @@ defineEmits(['copy', 'another'])
 
     <!-- quiz score -->
     <div v-if="submitResult && submitResult.show_score && submitResult.max_score" class="mt-4 mx-auto inline-flex flex-col items-center rounded-xl bg-surface-gray-1 px-6 py-4">
-      <span class="text-xs text-ink-gray-5 uppercase tracking-wide">Your score</span>
+      <span class="text-xs text-ink-gray-5">Your score</span>
       <span class="text-2xl font-semibold text-ink-gray-9 mt-1">{{ +submitResult.score.toFixed(2) }} / {{ +submitResult.max_score.toFixed(2) }}</span>
     </div>
 
@@ -33,7 +33,7 @@ defineEmits(['copy', 'another'])
     <div v-if="form.allow_edit && editUrl && !redirecting" class="mt-5 mx-auto max-w-[440px] text-left bg-surface-gray-1 rounded-lg p-3.5">
       <div class="flex items-center gap-1.5 text-sm text-ink-gray-7 mb-2"><Icon name="pencil" :size="13" />Edit your response later</div>
       <div class="flex items-center gap-2">
-        <input readonly class="cfg-input flex-1 text-[12px]" :value="editUrl" @focus="$event.target.select()" />
+        <input readonly class="cfg-input flex-1 text-xs" :value="editUrl" @focus="$event.target.select()" />
         <Button variant="subtle" theme="gray" @click="$emit('copy')">Copy</Button>
       </div>
     </div>

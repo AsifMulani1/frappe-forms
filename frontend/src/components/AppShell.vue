@@ -1,8 +1,7 @@
 <script setup>
-import { computed, h, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Dropdown, Sidebar, createResource } from 'frappe-ui'
-import Icon from './Icon.vue'
+import { Sidebar, SidebarHeader, SidebarItem, SidebarCollapseToggle, createResource } from 'frappe-ui'
 import AppLauncher from './AppLauncher.vue'
 import { session, logout } from '../data/session'
 import { prefs, toggleDevMode, toggleTheme } from '../data/prefs'
@@ -19,54 +18,51 @@ defineExpose({ refreshCounts: () => counts.reload() })
 // Header dropdown (Frappe CRM-style: brand + user identity is the menu trigger).
 const headerMenu = computed(() => [
   { label: 'Apps', icon: 'lucide-layout-grid', onClick: () => (launcher.value = true) },
-  { label: prefs.dark ? 'Light mode' : 'Dark mode', icon: prefs.dark ? 'sun' : 'moon', onClick: toggleTheme },
+  { label: prefs.dark ? 'Light mode' : 'Dark mode', icon: prefs.dark ? 'lucide-sun' : 'lucide-moon', onClick: toggleTheme },
   { label: 'Developer mode', icon: prefs.devMode ? 'lucide-check' : 'lucide-code', onClick: toggleDevMode },
-  { label: 'Log out', icon: 'log-out', onClick: logout },
+  { label: 'Log out', icon: 'lucide-log-out', onClick: logout },
 ])
 
-// frappe-ui SidebarItem renders string icons as literal text, so pass a real component.
-const icon = (name) => () => h(Icon, { name, size: 16 })
-
 const NAV = [
-  { id: 'all', label: 'All forms', icon: 'clipboard-list' },
-  { id: 'shared', label: 'Shared with me', icon: 'users' },
-  { id: 'templates', label: 'Templates', icon: 'layout-template' },
-  { id: 'archived', label: 'Archived', icon: 'archive' },
+  { id: 'all', label: 'All forms', icon: 'lucide-clipboard-list' },
+  { id: 'shared', label: 'Shared with me', icon: 'lucide-users' },
+  { id: 'templates', label: 'Templates', icon: 'lucide-layout-template' },
+  { id: 'archived', label: 'Archived', icon: 'lucide-archive' },
 ]
 function go(view) {
   router.push(view === 'all' ? '/' : { path: '/', query: { view } })
 }
-
-const sections = computed(() => [{
-  items: NAV.map((n) => ({
-    label: n.label,
-    icon: icon(n.icon),
-    suffix: counts.data?.[n.id] ? String(counts.data[n.id]) : undefined,
-    isActive: activeView.value === n.id,
-    onClick: () => go(n.id),
-  })),
-}])
 </script>
 
 <template>
   <div class="flex h-full w-full">
-    <Sidebar v-model:collapsed="prefs.navCollapsed" :sections="sections" class="!bg-surface-base">
-      <!-- header: brand + user identity is the menu (Frappe CRM pattern), then search -->
-      <template #header>
-        <Dropdown :options="headerMenu" placement="bottom-start">
-          <button class="flex items-center h-12 w-full rounded-md transition-colors hover:bg-surface-gray-3"
-                  :class="prefs.navCollapsed ? 'justify-center' : 'gap-2.5 px-2'">
-            <img :src="brandLogo" alt="Frappe Forms" class="w-8 h-8 rounded-[7px] shrink-0" />
-            <template v-if="!prefs.navCollapsed">
-              <div class="flex flex-col flex-1 min-w-0 text-left leading-tight">
-                <span class="text-sm font-medium text-ink-gray-9 truncate">Frappe Forms</span>
-                <span class="text-[11px] text-ink-gray-5 truncate">{{ session.fullName || session.user || 'Signed in' }}</span>
-              </div>
-              <Icon name="chevron-down" :size="15" class="text-ink-gray-5 shrink-0" />
-            </template>
-          </button>
-        </Dropdown>
-      </template>
+    <Sidebar v-model:collapsed="prefs.navCollapsed">
+      <div class="flex h-full flex-col p-2">
+        <!-- brand + user identity is the menu (Frappe CRM pattern) -->
+        <SidebarHeader
+          title="Frappe Forms"
+          :subtitle="session.fullName || session.user || 'Signed in'"
+          :logo="brandLogo"
+          :menu-items="headerMenu"
+        />
+
+        <!-- -mx/px so the active item's shadow ring isn't clipped at the edges -->
+        <nav class="-mx-1 mt-1 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-1">
+          <SidebarItem
+            v-for="n in NAV"
+            :key="n.id"
+            :label="n.label"
+            :icon="n.icon"
+            :active="activeView === n.id"
+            :suffix="counts.data?.[n.id] ? String(counts.data[n.id]) : undefined"
+            @click="go(n.id)"
+          />
+        </nav>
+
+        <div class="mt-auto">
+          <SidebarCollapseToggle />
+        </div>
+      </div>
     </Sidebar>
 
     <div class="flex flex-col flex-1 min-w-0">

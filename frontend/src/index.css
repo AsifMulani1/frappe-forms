@@ -1,4 +1,8 @@
 @import 'frappe-ui/style.css';
+/* Structural grid/divider rules for the frappe-ui/list family. Imported
+   explicitly: the side-effect import inside `frappe-ui/list` doesn't survive
+   the production build, so the rows never become CSS grids without this. */
+@import 'frappe-ui/list-style.css';
 
 /* ---------------------------------------------------------------------------
    Frappe Forms - app layer on top of the frappe-ui (Espresso) design system.

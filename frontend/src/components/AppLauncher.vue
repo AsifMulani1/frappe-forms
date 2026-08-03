@@ -30,8 +30,8 @@ const SUITE = [
       <div class="grid grid-cols-3 gap-1">
         <div v-for="a in SUITE" :key="a.id" class="app-tile" :style="{ cursor: a.current ? 'pointer' : 'default' }">
           <span class="glyph" :style="{ background: a.color }"><Icon :name="a.icon" :size="22" /></span>
-          <span class="text-[12.5px] text-ink-gray-8">{{ a.name }}</span>
-          <span v-if="a.current" class="text-[11px] ink-accent -mt-0.5">Open</span>
+          <span class="text-xs text-ink-gray-8">{{ a.name }}</span>
+          <span v-if="a.current" class="text-2xs ink-accent -mt-0.5">Open</span>
         </div>
       </div>
     </template>

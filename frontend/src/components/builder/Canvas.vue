@@ -154,7 +154,7 @@ function toggleCorrect(field, opt) {
            @click="emit('select', null)">
         <img v-if="form.cover_image" :src="form.cover_image" alt="Cover" class="w-full h-[160px] object-cover" />
         <div class="px-4 py-5 sm:px-6">
-          <input class="edit-line text-[22px] font-medium text-ink-gray-9" :value="form.title"
+          <input class="edit-line text-3xl font-medium text-ink-gray-9" :value="form.title"
                  placeholder="Form title" @click.stop
                  @input="emit('update-meta', { title: $event.target.value })" />
           <textarea class="edit-line text-sm text-ink-gray-6 mt-1.5 resize-none leading-relaxed" rows="2"
@@ -194,7 +194,7 @@ function toggleCorrect(field, opt) {
             <Icon name="grip-vertical" :size="15" />
           </span>
           <input class="edit-line min-w-0 max-w-full" style="field-sizing:content;width:auto"
-                 :class="isLayout(f.field_type) ? 'text-[18px] font-semibold text-ink-gray-9' : 'text-[15px] font-medium text-ink-gray-9'"
+                 :class="isLayout(f.field_type) ? 'text-2xl font-semibold text-ink-gray-9' : 'text-md font-medium text-ink-gray-9'"
                  :value="f.label" :placeholder="isLayout(f.field_type) ? 'Section title' : 'Question label'"
                  @click.stop @input="emit('update-field', f.name, { label: $event.target.value })" />
           <span v-if="f.reqd && !isLayout(f.field_type)" class="text-base text-ink-red-500 shrink-0 -ml-0.5" title="Required">*</span>
@@ -206,10 +206,10 @@ function toggleCorrect(field, opt) {
             <button class="p-1 rounded hover:bg-surface-gray-2 text-ink-red-500" title="Delete" @click="emit('delete', f.name)"><Icon name="trash-2" :size="14" /></button>
           </div>
         </div>
-        <input v-if="f.help_text || selectedId === f.name" class="edit-line text-[13px] text-ink-gray-5 mb-1"
+        <input v-if="f.help_text || selectedId === f.name" class="edit-line text-sm text-ink-gray-5 mb-1"
                :value="f.help_text" :placeholder="isLayout(f.field_type) ? 'Add a subtitle (optional)' : 'Add a description (optional)'"
                @click.stop @input="emit('update-field', f.name, { help_text: $event.target.value })" />
-        <div v-if="isLayout(f.field_type)" class="inline-flex items-center gap-1 mt-1 text-[11px] font-medium text-ink-gray-5 bg-surface-gray-2 rounded px-1.5 py-0.5 w-fit">
+        <div v-if="isLayout(f.field_type)" class="inline-flex items-center gap-1 mt-1 text-2xs font-medium text-ink-gray-5 bg-surface-gray-2 rounded px-1.5 py-0.5 w-fit">
           <Icon name="corner-down-right" :size="11" />Page {{ pageNumberAt(i) }} · starts a new page for respondents
         </div>
 
@@ -242,7 +242,7 @@ function toggleCorrect(field, opt) {
             <span v-if="f.min_label" class="text-sm text-ink-gray-5">{{ f.min_label }}</span>
             <div class="flex items-center gap-3">
               <div v-for="n in scaleRange(f)" :key="n" class="flex flex-col items-center gap-1">
-                <span class="text-[12px] text-ink-gray-6">{{ n }}</span><span class="prev-radio" />
+                <span class="text-xs text-ink-gray-6">{{ n }}</span><span class="prev-radio" />
               </div>
             </div>
             <span v-if="f.max_label" class="text-sm text-ink-gray-5">{{ f.max_label }}</span>
@@ -255,9 +255,9 @@ function toggleCorrect(field, opt) {
                 <tr>
                   <th class="w-[120px]"></th>
                   <th v-for="(col, ci) in optionsArray(f)" :key="ci">
-                    <input v-if="selectedId === f.name" class="edit-line text-[12px] text-center w-[72px]" :value="col"
+                    <input v-if="selectedId === f.name" class="edit-line text-xs text-center w-[72px]" :value="col"
                            :placeholder="`Col ${ci + 1}`" @click.stop @input="setOption(f, ci, $event.target.value)" />
-                    <span v-else class="text-[12px] text-ink-gray-6">{{ col }}</span>
+                    <span v-else class="text-xs text-ink-gray-6">{{ col }}</span>
                   </th>
                   <th v-if="selectedId === f.name" class="w-7">
                     <button class="text-ink-gray-4 hover:text-ink-gray-7" title="Add column" @click.stop="addOption(f)"><Icon name="plus" :size="13" /></button>
@@ -267,9 +267,9 @@ function toggleCorrect(field, opt) {
               <tbody>
                 <tr v-for="(row, ri) in rowsArray(f)" :key="ri">
                   <td class="text-left">
-                    <input v-if="selectedId === f.name" class="edit-line text-[13px]" :value="row"
+                    <input v-if="selectedId === f.name" class="edit-line text-sm" :value="row"
                            :placeholder="`Row ${ri + 1}`" @click.stop @input="setRow(f, ri, $event.target.value)" />
-                    <span v-else class="text-[13px] text-ink-gray-7">{{ row }}</span>
+                    <span v-else class="text-sm text-ink-gray-7">{{ row }}</span>
                   </td>
                   <td v-for="(col, ci) in optionsArray(f)" :key="ci" class="text-center">
                     <span :class="f.field_type === 'mc_grid' ? 'prev-radio' : 'prev-check'" class="inline-block" />
@@ -290,7 +290,7 @@ function toggleCorrect(field, opt) {
           <div v-else-if="['single_choice', 'checkboxes'].includes(f.field_type)" class="flex flex-col gap-2.5">
             <div v-for="(opt, oi) in optionsArray(f)" :key="oi" class="opt-row">
               <span :class="f.field_type === 'single_choice' ? 'prev-radio' : 'prev-check'" />
-              <input v-if="selectedId === f.name" class="edit-line text-[13px]" :value="opt" :placeholder="`Option ${oi + 1}`"
+              <input v-if="selectedId === f.name" class="edit-line text-sm" :value="opt" :placeholder="`Option ${oi + 1}`"
                      @click.stop @input="setOption(f, oi, $event.target.value)" />
               <span v-else class="text-sm text-ink-gray-7">{{ opt }}</span>
               <button v-if="selectedId === f.name && optionsArray(f).length > 1" class="p-0.5 rounded hover:bg-surface-gray-2 text-ink-gray-4"
@@ -306,7 +306,7 @@ function toggleCorrect(field, opt) {
             </div>
           </div>
           <!-- dropdown "Other" hint -->
-          <div v-if="f.field_type === 'dropdown' && f.has_other" class="text-[12px] text-ink-gray-5 italic mt-1.5">+ Other…</div>
+          <div v-if="f.field_type === 'dropdown' && f.has_other" class="text-xs text-ink-gray-5 italic mt-1.5">+ Other…</div>
         </div>
 
         <!-- inline field controls (minimal mode): change type + required + per-type options -->
@@ -331,11 +331,11 @@ function toggleCorrect(field, opt) {
 
           <!-- linear scale: range + end labels -->
           <div v-if="f.field_type === 'linear_scale'" class="flex flex-wrap items-end gap-3">
-            <label class="flex flex-col gap-1"><span class="text-[12px] text-ink-gray-6">From</span>
+            <label class="flex flex-col gap-1"><span class="text-xs text-ink-gray-6">From</span>
               <select class="cfg-input w-[64px]" :value="f.scale_min ?? 1" @change="emit('update-field', f.name, { scale_min: +$event.target.value })">
                 <option v-for="n in [0, 1]" :key="n" :value="n">{{ n }}</option>
               </select></label>
-            <label class="flex flex-col gap-1"><span class="text-[12px] text-ink-gray-6">To</span>
+            <label class="flex flex-col gap-1"><span class="text-xs text-ink-gray-6">To</span>
               <select class="cfg-input w-[64px]" :value="f.scale_max ?? 5" @change="emit('update-field', f.name, { scale_max: +$event.target.value })">
                 <option v-for="n in [2, 3, 4, 5, 6, 7, 8, 9, 10]" :key="n" :value="n">{{ n }}</option>
               </select></label>
@@ -368,7 +368,7 @@ function toggleCorrect(field, opt) {
 
           <!-- conditional logic: show this field only when a prior field matches -->
           <div v-if="!isLayout(f.field_type) && priorSources(f).length" class="flex flex-col gap-2 pt-1">
-            <div class="flex items-center gap-2 text-[12px] text-ink-gray-6"><Icon name="git-branch" :size="13" />Conditional logic</div>
+            <div class="flex items-center gap-2 text-xs text-ink-gray-6"><Icon name="git-branch" :size="13" />Conditional logic</div>
             <div class="flex flex-wrap items-center gap-2">
               <select class="cfg-input min-w-[150px]" :value="f.condition_field || ''"
                       @change="emit('update-field', f.name, { condition_field: $event.target.value })">
@@ -402,7 +402,7 @@ function toggleCorrect(field, opt) {
                      @input="emit('update-field', f.name, { points: +$event.target.value || 0 })" />
             </div>
             <div class="flex flex-col gap-1.5">
-              <span class="text-[12px] text-ink-gray-6">Correct answer</span>
+              <span class="text-xs text-ink-gray-6">Correct answer</span>
               <div v-if="hasOptions(f.field_type) || f.field_type === 'yes_no'" class="flex flex-wrap gap-1.5">
                 <button v-for="o in quizOptions(f)" :key="o" type="button"
                         class="px-2.5 h-7 rounded-md border text-sm transition-colors"

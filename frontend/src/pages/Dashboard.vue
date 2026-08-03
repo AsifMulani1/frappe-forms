@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Badge, Button, Checkbox, Dropdown, FormControl, TabButtons, createResource, confirmDialog, toast } from 'frappe-ui'
+import { List, ListHeader, ListHeaderCell, ListHeaderCellSort, ListGroup, ListRow, ListCell } from 'frappe-ui/list'
 import { call } from '../data/call'
 import Icon from '../components/Icon.vue'
 import AppShell from '../components/AppShell.vue'
@@ -78,6 +79,101 @@ function ago(dt) {
   return `${Math.round(d / 86400)}d ago`
 }
 
+// Whole calendar days between `dt` and now — the single source for both the
+// time-bucket a row lands in and its relative "Updated" label.
+function daysAgo(dt) {
+  if (!dt) return Infinity
+  const then = new Date(dt.replace(' ', 'T'))
+  const now = new Date()
+  const startThen = new Date(then.getFullYear(), then.getMonth(), then.getDate())
+  const startNow = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((startNow - startThen) / 86400000)
+}
+
+// Fixed, chronological buckets; each row lands in the first whose match accepts
+// its age. Empty buckets drop out of the render.
+const TIME_BUCKETS = [
+  { key: 'today', label: 'Today', match: (d) => d <= 0 },
+  { key: 'yesterday', label: 'Yesterday', match: (d) => d === 1 },
+  { key: 'this-week', label: 'This week', match: (d) => d >= 2 && d <= 6 },
+  { key: 'last-week', label: 'Last week', match: (d) => d >= 7 && d <= 13 },
+  { key: 'earlier', label: 'Earlier', match: (d) => d >= 14 },
+]
+
+// --- column sort (orders rows *within* each time bucket) ---
+const sortField = ref('updated')
+const sortDirection = ref('asc') // asc on 'updated' = newest first inside a bucket
+function toggleSort(field) {
+  if (sortField.value === field) sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+  else { sortField.value = field; sortDirection.value = field === 'updated' ? 'asc' : 'asc' }
+}
+function directionFor(field) {
+  return sortField.value === field ? sortDirection.value : null
+}
+function compareRows(a, b) {
+  const f = sortDirection.value === 'desc' ? -1 : 1
+  if (sortField.value === 'name') return f * a.title.localeCompare(b.title)
+  if (sortField.value === 'responses') return f * ((a.responses || 0) - (b.responses || 0)) || a.title.localeCompare(b.title)
+  return f * (daysAgo(a.modified) - daysAgo(b.modified)) || a.title.localeCompare(b.title)
+}
+
+// The time buckets are the primary structure; the active column sort only
+// orders rows within each bucket. Group order stays chronological either way.
+const groups = computed(() => {
+  const sorted = [...rows.value].sort(compareRows)
+  return TIME_BUCKETS
+    .map((b) => ({ ...b, items: sorted.filter((f) => b.match(daysAgo(f.modified))) }))
+    .filter((g) => g.items.length)
+})
+
+// --- collapsible time buckets ---
+// The long tail of old forms is what makes the list "go on and on", so the
+// older buckets fold away by default — recency-first is the right default for a
+// forms dashboard. Every header stays clickable to fold/unfold at will.
+const COLLAPSIBLE = new Set(['last-week', 'earlier'])
+const collapsed = ref(new Set())
+// Seed the default collapsed set once per view load (never clobber user toggles
+// on later data refreshes). The top group always stays open, so a user whose
+// forms are *all* old still lands on visible rows, not a wall of headers.
+let collapsedInitView = null
+watch([activeView, groups], () => {
+  if (collapsedInitView === activeView.value || !groups.value.length) return
+  const next = new Set()
+  groups.value.forEach((g, i) => { if (i > 0 && COLLAPSIBLE.has(g.key)) next.add(g.key) })
+  collapsed.value = next
+  collapsedInitView = activeView.value
+}, { immediate: true })
+
+function toggleBucket(g) {
+  const next = new Set(collapsed.value)
+  if (next.has(g.key)) next.delete(g.key)
+  else next.add(g.key)
+  collapsed.value = next
+}
+
+// The rendered groups. An active search suppresses collapsing so every match
+// stays visible; otherwise a folded bucket renders no rows (its header still
+// shows the count).
+const renderGroups = computed(() => {
+  const suppress = !!search.value.trim()
+  return groups.value.map((g) => {
+    const isCollapsed = !suppress && collapsed.value.has(g.key)
+    return { ...g, total: g.items.length, shown: isCollapsed ? [] : g.items, collapsed: isCollapsed, collapsible: !suppress }
+  })
+})
+
+// Grid track sizes for the list — kept in lockstep with the cells rendered per
+// row below (leading dot, name, [responses], [status], updated, menu).
+// Equal-width, uniformly start-aligned meta columns so their edges line up on
+// an even rhythm (mixed left/right alignment is what makes gaps look lopsided).
+const listColumns = computed(() => {
+  const cols = ['1.25rem', 'minmax(0,1fr)']
+  if (showMetrics.value) cols.push('6.5rem')
+  if (showStatusCol.value) cols.push('6.5rem')
+  cols.push('6.5rem', '2.5rem')
+  return cols
+})
+
 // Default-named drafts recede so real, named forms lead the list (never hidden or deleted).
 function isUntitled(f) {
   return f.status !== 'Published' && (!f.title || f.title === 'Untitled form')
@@ -136,13 +232,13 @@ function deleteForm(f) {
   })
 }
 function rowMenu(f) {
-  const items = [{ label: 'Edit', icon: 'edit-2', onClick: () => router.push(`/${f.slug}/edit`) }]
-  if (f.status === 'Published') items.push({ label: 'Responses', icon: 'bar-chart-2', onClick: () => router.push(`/${f.slug}/responses`) })
-  items.push({ label: 'Duplicate', icon: 'copy', onClick: () => duplicate(f) })
-  items.push({ label: 'Share', icon: 'user-plus', onClick: () => openShare(f) })
-  if (f.archived) items.push({ label: 'Restore', icon: 'archive-restore', onClick: () => archive(f, false) })
-  else items.push({ label: 'Archive', icon: 'archive', onClick: () => archive(f, true) })
-  items.push({ label: 'Delete', icon: 'trash-2', theme: 'red', onClick: () => deleteForm(f) })
+  const items = [{ label: 'Edit', icon: 'lucide-pencil', onClick: () => router.push(`/${f.slug}/edit`) }]
+  if (f.status === 'Published') items.push({ label: 'Responses', icon: 'lucide-bar-chart-2', onClick: () => router.push(`/${f.slug}/responses`) })
+  items.push({ label: 'Duplicate', icon: 'lucide-copy', onClick: () => duplicate(f) })
+  items.push({ label: 'Share', icon: 'lucide-user-plus', onClick: () => openShare(f) })
+  if (f.archived) items.push({ label: 'Restore', icon: 'lucide-archive-restore', onClick: () => archive(f, false) })
+  else items.push({ label: 'Archive', icon: 'lucide-archive', onClick: () => archive(f, true) })
+  items.push({ label: 'Delete', icon: 'lucide-trash-2', theme: 'red', onClick: () => deleteForm(f) })
   return items
 }
 
@@ -207,7 +303,7 @@ function openShare(f) {
         <div class="flex items-start justify-between gap-4 mb-7">
           <div class="flex flex-col gap-1.5 min-w-0">
             <h1 class="text-3xl font-semibold text-ink-gray-9">{{ meta.title }}</h1>
-            <p class="text-sm text-ink-gray-5">{{ meta.sub }}</p>
+            <p class="text-p-sm text-ink-gray-5">{{ meta.sub }}</p>
           </div>
           <Button variant="solid" theme="gray" class="shrink-0 mt-1" @click="newForm">
             <template #prefix><Icon name="plus" :size="15" /></template>
@@ -259,14 +355,14 @@ function openShare(f) {
         <div v-else-if="!rows.length" class="flex flex-col items-center justify-center text-center border border-outline-gray-2 rounded-[10px] bg-surface-base py-16">
           <Icon :name="search ? 'search' : isArchived ? 'archive' : isTemplates ? 'layout-template' : 'clipboard-list'" :size="26" class="text-ink-gray-4" />
           <template v-if="search">
-            <p class="text-base text-ink-gray-7 mt-3">No forms match “{{ search }}”</p>
-            <p class="text-sm text-ink-gray-5 mt-1">Try a different search.</p>
+            <p class="text-p-base text-ink-gray-7 mt-3">No forms match “{{ search }}”</p>
+            <p class="text-p-sm text-ink-gray-5 mt-1">Try a different search.</p>
           </template>
           <template v-else>
-            <p class="text-base text-ink-gray-7 mt-3">
+            <p class="text-p-base text-ink-gray-7 mt-3">
               {{ isArchived ? 'Nothing archived' : isTemplates ? 'No templates yet' : activeView === 'shared' ? 'Nothing shared with you' : 'No forms yet' }}
             </p>
-            <p class="text-sm text-ink-gray-5 mt-1">{{ isTemplates ? 'Mark any form as a template to reuse it.' : 'Create one to get started.' }}</p>
+            <p class="text-p-sm text-ink-gray-5 mt-1">{{ isTemplates ? 'Mark any form as a template to reuse it.' : 'Create one to get started.' }}</p>
             <Button v-if="activeView === 'all'" variant="solid" theme="gray" class="mt-4" @click="newForm">New form</Button>
           </template>
         </div>
@@ -288,7 +384,7 @@ function openShare(f) {
               <div class="absolute inset-x-3.5 top-7 bottom-0 bg-surface-base rounded-t-[8px] shadow-[0_-1px_8px_rgba(0,0,0,0.06)] px-4 pt-3.5 flex flex-col gap-2.5 overflow-hidden">
                 <div class="text-sm font-semibold text-ink-gray-9 pb-2.5 border-b border-outline-gray-1 truncate">{{ f.title }}</div>
                 <div v-for="(fld, i) in (f.preview || []).slice(0, 3)" :key="i" class="flex flex-col gap-1">
-                  <span class="text-[11px] font-medium text-ink-gray-7 truncate">
+                  <span class="text-2xs font-medium text-ink-gray-7 truncate">
                     {{ fld.label }}<span v-if="fld.reqd" class="text-ink-red-500">&nbsp;*</span>
                   </span>
                   <div v-if="fld.field_type === 'paragraph'" class="h-9 rounded-md border border-outline-gray-2 bg-surface-gray-1" />
@@ -306,56 +402,82 @@ function openShare(f) {
           </div>
         </div>
 
-        <!-- list view (columns adapt to the active filter) -->
-        <div v-else-if="view === 'list'" class="border border-outline-gray-1 rounded-[10px] overflow-hidden bg-surface-base">
-          <div class="flex items-center gap-3 px-4 py-2.5 border-b border-outline-gray-1 bg-surface-gray-1 text-xs text-ink-gray-5">
-            <span class="w-4 flex items-center justify-center" @click.stop>
-              <Checkbox :modelValue="allSelected" @update:modelValue="toggleAll" />
-            </span>
-            <span class="flex-1">Form</span>
-            <span v-if="showMetrics" class="w-24 text-right">Responses</span>
-            <span v-if="showStatusCol" class="w-[104px] pl-4">Status</span>
-            <span class="w-20 text-right">Updated</span>
-            <span class="w-8" />
-          </div>
-          <div v-for="f in rows" :key="f.name"
-               class="group flex items-center gap-3 px-4 py-3.5 cursor-pointer border-t border-outline-gray-1 first:border-t-0 hover:bg-surface-gray-1 transition-colors"
-               :class="{ 'bg-surface-gray-1': selected.has(f.name) }"
-               @click="router.push(`/${f.slug}/edit`)">
-            <!-- leading cell: status dot by default, checkbox on hover or when selected -->
-            <span class="relative w-4 h-4 shrink-0" @click.stop>
-              <span class="absolute inset-0 flex items-center justify-center transition-opacity"
-                    :class="selected.has(f.name) ? 'opacity-0' : 'group-hover:opacity-0'">
-                <span class="w-2 h-2 rounded-full" :title="f.status"
-                      :style="{ background: f.status === 'Published' ? 'var(--green-500)' : 'var(--gray-400)' }" />
+        <!-- list view (frappe-ui/list; columns adapt to the active filter, rows
+             grouped by last-modified, sort orders rows within each group) -->
+        <!-- -mx-2 pairs with the row padding var: content insets back to the
+             toolbar's edge while the hover surface bleeds into the gutter. -->
+        <List v-else-if="view === 'list'" :columns="listColumns" class="group/list -mx-2" style="--list-row-padding-x: 0.5rem">
+          <ListHeader>
+            <ListHeaderCell>
+              <span class="flex items-center justify-center transition-opacity" @click.stop
+                    :class="selectMode ? 'opacity-100' : 'opacity-0 group-hover/list:opacity-100'">
+                <Checkbox :modelValue="allSelected" @update:modelValue="toggleAll" />
               </span>
-              <span class="absolute inset-0 flex items-center justify-center transition-opacity"
-                    :class="selected.has(f.name) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
-                <Checkbox :modelValue="selected.has(f.name)" @update:modelValue="toggleSelect(f.name)" />
-              </span>
-            </span>
-            <div class="flex flex-col flex-1 min-w-0 gap-0.5">
-              <span class="text-base truncate leading-tight" :class="isUntitled(f) ? 'text-ink-gray-5' : 'text-ink-gray-9'">{{ f.title }}</span>
-              <span class="text-xs text-ink-gray-5 truncate">
-                {{ prefs.devMode ? (f.storage_mode === 'Linked' ? `Linked · ${f.target_doctype}` : 'DocType compiled')
-                  : f.field_count === 0 ? 'Empty draft — add questions to publish'
-                  : `${f.field_count} ${f.field_count === 1 ? 'question' : 'questions'}` }}
-              </span>
-            </div>
-            <span v-if="showMetrics" class="w-24 text-right text-base tabular-nums"
-                  :title="f.status === 'Published' ? `${f.responses} responses · ${f.completion}% completion rate` : ''">
-              <span v-if="f.status === 'Published'" :class="f.responses ? 'text-ink-gray-8' : 'text-ink-gray-3'">{{ f.responses ? f.responses.toLocaleString() : '0' }}</span>
-              <span v-else class="text-ink-gray-3">–</span>
-            </span>
-            <span v-if="showStatusCol" class="w-[104px] pl-4"><Badge :theme="f.status === 'Published' ? 'green' : 'gray'" :label="f.status" /></span>
-            <span class="w-20 text-right text-sm text-ink-gray-5">{{ ago(f.modified) }}</span>
-            <span class="w-8 flex justify-end" @click.stop>
-              <Dropdown :options="rowMenu(f)">
-                <Button variant="ghost" theme="gray" class="opacity-0 group-hover:opacity-100"><Icon name="ellipsis" :size="16" /></Button>
-              </Dropdown>
-            </span>
-          </div>
-        </div>
+            </ListHeaderCell>
+            <ListHeaderCellSort :direction="directionFor('name')" @click="toggleSort('name')">Form</ListHeaderCellSort>
+            <ListHeaderCellSort v-if="showMetrics" :direction="directionFor('responses')" @click="toggleSort('responses')">Responses</ListHeaderCellSort>
+            <ListHeaderCell v-if="showStatusCol">Status</ListHeaderCell>
+            <ListHeaderCellSort :direction="directionFor('updated')" @click="toggleSort('updated')">Updated</ListHeaderCellSort>
+            <ListHeaderCell />
+          </ListHeader>
+
+          <ListGroup v-for="grp in renderGroups" :key="grp.key">
+            <template #header>
+              <button v-if="grp.collapsible" type="button"
+                      class="group/hdr flex items-center gap-1.5 h-full pr-2 -ml-1 pl-1 rounded text-sm-medium text-ink-gray-5 hover:text-ink-gray-7"
+                      @click="toggleBucket(grp)">
+                <Icon name="chevron-right" :size="14" class="text-ink-gray-4 transition-transform" :class="{ 'rotate-90': !grp.collapsed }" />
+                <span>{{ grp.label }}</span>
+                <span class="text-ink-gray-4 tabular-nums">{{ grp.total }}</span>
+              </button>
+              <span v-else>{{ grp.label }}</span>
+            </template>
+            <ListRow v-for="f in grp.shown" :key="f.name" class="group" @click="router.push(`/${f.slug}/edit`)">
+              <!-- leading cell: status dot by default, checkbox on hover / when selected -->
+              <ListCell>
+                <span class="relative w-4 h-4 shrink-0" @click.stop>
+                  <span class="absolute inset-0 flex items-center justify-center transition-opacity"
+                        :class="selected.has(f.name) ? 'opacity-0' : 'group-hover:opacity-0'">
+                    <span class="w-2 h-2 rounded-full" :title="f.status"
+                          :style="{ background: f.status === 'Published' ? 'var(--green-500)' : 'var(--gray-400)' }" />
+                  </span>
+                  <span class="absolute inset-0 flex items-center justify-center transition-opacity"
+                        :class="selected.has(f.name) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'">
+                    <Checkbox :modelValue="selected.has(f.name)" @update:modelValue="toggleSelect(f.name)" />
+                  </span>
+                </span>
+              </ListCell>
+              <ListCell>
+                <div class="flex flex-col min-w-0 gap-0.5 py-2">
+                  <span class="text-base truncate leading-tight" :class="isUntitled(f) ? 'text-ink-gray-5' : 'text-ink-gray-9'">{{ f.title }}</span>
+                  <span class="text-xs text-ink-gray-5 truncate">
+                    {{ prefs.devMode ? (f.storage_mode === 'Linked' ? `Linked · ${f.target_doctype}` : 'DocType compiled')
+                      : f.field_count === 0 ? 'Empty draft — add questions to publish'
+                      : `${f.field_count} ${f.field_count === 1 ? 'question' : 'questions'}` }}
+                  </span>
+                </div>
+              </ListCell>
+              <ListCell v-if="showMetrics">
+                <span class="text-base tabular-nums"
+                      :title="f.status === 'Published' ? `${f.responses} responses · ${f.completion}% completion rate` : ''">
+                  <span v-if="f.status === 'Published'" :class="f.responses ? 'text-ink-gray-8' : 'text-ink-gray-3'">{{ f.responses ? f.responses.toLocaleString() : '0' }}</span>
+                  <span v-else class="text-ink-gray-3">–</span>
+                </span>
+              </ListCell>
+              <ListCell v-if="showStatusCol">
+                <Badge :theme="f.status === 'Published' ? 'green' : 'gray'" :label="f.status" />
+              </ListCell>
+              <ListCell>
+                <span class="text-sm text-ink-gray-5">{{ ago(f.modified) }}</span>
+              </ListCell>
+              <ListCell class="justify-end" @click.stop>
+                <Dropdown :options="rowMenu(f)">
+                  <Button variant="ghost" theme="gray" class="opacity-0 group-hover:opacity-100"><Icon name="ellipsis" :size="16" /></Button>
+                </Dropdown>
+              </ListCell>
+            </ListRow>
+          </ListGroup>
+        </List>
 
         <!-- grid view: minimal cards — status as a dot, one quiet subtitle, actions on hover -->
         <div v-else class="grid grid-cols-2 gap-4">

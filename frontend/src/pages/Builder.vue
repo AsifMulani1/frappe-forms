@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { Badge, Button, Dropdown, Tooltip, confirmDialog, toast } from 'frappe-ui'
 import { call } from '../data/call'
 import Icon from '../components/Icon.vue'
+import brandLogo from '../assets/logo.svg'
 import ShareDialog from '../components/ShareDialog.vue'
 import Canvas from '../components/builder/Canvas.vue'
 import Inspector from '../components/builder/Inspector.vue'
@@ -290,8 +291,8 @@ function openShare() { shareOpen.value = true }
     <div class="h-[48px] border-b border-outline-gray-1 bg-surface-base flex items-center px-3.5 shrink-0 relative">
       <!-- left: back + title + a quiet status dot -->
       <div class="flex items-center gap-2.5 min-w-0">
-        <button class="flex items-center gap-1.5 px-2 h-8 rounded-md hover:bg-surface-gray-2 text-ink-gray-7 shrink-0 transition-colors" title="Back to all forms" @click="router.push('/')">
-          <Icon name="clipboard-list" :size="15" />
+        <button class="flex items-center gap-1.5 pl-1 pr-2 h-8 rounded-md hover:bg-surface-gray-2 text-ink-gray-7 shrink-0 transition-colors" title="Back to all forms" @click="router.push('/')">
+          <img :src="brandLogo" alt="" class="h-[18px] w-[18px] rounded-[5px] shrink-0" />
           <span class="text-sm font-medium">Forms</span>
         </button>
         <Icon name="chevron-right" :size="15" class="text-ink-gray-4 shrink-0" />
@@ -309,7 +310,7 @@ function openShare() { shareOpen.value = true }
 
       <!-- right: autosave state, settings, preview, overflow, single primary action -->
       <div class="flex items-center gap-1.5 ml-auto">
-        <span class="text-[11px] text-ink-gray-4 flex items-center gap-1 mr-1 w-[52px] justify-end">
+        <span class="text-2xs text-ink-gray-4 flex items-center gap-1 mr-1 w-[52px] justify-end">
           <template v-if="saveState === 'saving'"><Icon name="loader" :size="12" class="animate-spin" />Saving</template>
           <template v-else-if="saveState === 'saved'"><Icon name="check" :size="12" class="text-ink-green-600" />Saved</template>
         </span>
